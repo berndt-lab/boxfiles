@@ -1,7 +1,15 @@
 import { cookies } from "next/headers"
-import type { Achievement, Profile } from "@/lib/format"
+import type { Achievement, Game, Profile } from "@/lib/format"
 import { SESSION_COOKIE, unseal, type XboxSession } from "@/lib/session"
-import { achievementsFrom, gamesFrom, peopleFrom, pickPerson, type XboxPerson } from "@/lib/xbox-map"
+import {
+  achievementsFrom,
+  gamesFrom,
+  peopleFrom,
+  pickPerson,
+  recentUnlocksFrom,
+  type RecentUnlock,
+  type XboxPerson,
+} from "@/lib/xbox-map"
 
 const PEOPLE = "https://peoplehub.xboxlive.com/users/me/people"
 const PROFILE = "https://profile.xboxlive.com/users"
@@ -40,7 +48,23 @@ async function requireSession() {
   return session
 }
 
-async function xboxGet(session: XboxSession, url: string, contract: string): Promise<unknown> {
+// Per-viewer, best effort: the dashboard, profile, and achievement calls share answers for two minutes.
+// Keys include the viewer's xuid, so one player's view never answers another's.
+const CACHE_MS = 2 * 60 * 1000
+const cache = new Map<string, { at: number; value: Promise<unknown> }>()
+
+function xboxGet(session: XboxSession, url: string, contract: string): Promise<unknown> {
+  const key = `${session.xuid} ${contract} ${url}`
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value
+  const value = xboxFetch(session, url, contract)
+  cache.set(key, { at: Date.now(), value })
+  value.catch(() => cache.delete(key))
+  if (cache.size > 500) cache.delete(cache.keys().next().value ?? "")
+  return value
+}
+
+async function xboxFetch(session: XboxSession, url: string, contract: string): Promise<unknown> {
   const response = await fetch(url, {
     headers: {
       Authorization: `XBL3.0 x=${session.uhs};${session.xsts}`,
@@ -149,7 +173,10 @@ export async function lookupXboxProfile(tag: string): Promise<Profile | null> {
 
 export async function lookupAchievements(xuid: string, titleId: string): Promise<Achievement[]> {
   if (!/^\d+$/.test(xuid) || !/^\d+$/.test(titleId)) throw new XboxError("Bad Xbox id.")
-  const session = await requireSession()
+  return achievementsFor(await requireSession(), xuid, titleId)
+}
+
+async function achievementsFor(session: XboxSession, xuid: string, titleId: string): Promise<Achievement[]> {
   const achievements: Achievement[] = []
   const seen = new Set<string>()
   let token: string | null = null
@@ -173,4 +200,56 @@ export async function lookupAchievements(xuid: string, titleId: string): Promise
     token = batch.continuation
   }
   return achievements
+}
+
+/** The signed-in player's friends list, with gamerscore and presence. */
+export async function lookupFriends(): Promise<XboxPerson[]> {
+  const session = await requireSession()
+  const people = peopleFrom(await xboxGet(session, `${PEOPLE}/social/decoration/${PEOPLE_DECORATION}`, "5"))
+  return people.filter((person) => person.xuid !== session.xuid)
+}
+
+export async function lookupRecentUnlocks(limit = 8): Promise<RecentUnlock[]> {
+  const session = await requireSession()
+  const data = await xboxGet(
+    session,
+    `${ACHIEVEMENTS}/xuid(${session.xuid})/achievements?unlockedOnly=true&orderBy=unlockTime&maxItems=${limit}`,
+    "2",
+  )
+  return recentUnlocksFrom(data).slice(0, limit)
+}
+
+export type NextUp = { achievement: Achievement; game: Game }
+
+const PLANNED_GAMES = 6
+const PER_GAME = 3
+
+function completion(game: Game) {
+  return game.total ? (game.earned ?? 0) / game.total : 0
+}
+
+/**
+ * The easiest gamerscore still on the table: locked achievements from the player's closest-to-done games,
+ * most commonly unlocked first. Time-limited challenges and achievements without rarity data are left out.
+ */
+export async function lookupNextUp(games: Game[], limit = 8): Promise<NextUp[]> {
+  const session = await requireSession()
+  const candidates = games
+    .filter((game) => (game.total ?? 0) > 0 && (game.earned ?? 0) < (game.total ?? 0))
+    .sort((a, b) => completion(b) - completion(a))
+    .slice(0, PLANNED_GAMES)
+  const lists = await Promise.allSettled(candidates.map((game) => achievementsFor(session, session.xuid, game.id)))
+  const picks = lists.flatMap((result, index) => {
+    if (result.status === "rejected") return []
+    return result.value
+      .filter((achievement) => !achievement.unlockedAt && achievement.kind !== "Challenge" && achievement.rarity < 100)
+      .sort((a, b) => b.rarity - a.rarity || b.score - a.score)
+      .slice(0, PER_GAME)
+      .map((achievement) => ({ achievement, game: candidates[index] }))
+  })
+  if (picks.length === 0 && lists.some((result) => result.status === "rejected")) {
+    const failed = lists.find((result) => result.status === "rejected")
+    if (failed?.status === "rejected") throw failed.reason
+  }
+  return picks.sort((a, b) => b.achievement.rarity - a.achievement.rarity || b.achievement.score - a.achievement.score).slice(0, limit)
 }

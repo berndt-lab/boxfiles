@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { achievementsFrom, gamesFrom, peopleFrom, pickPerson } from "./xbox-map.ts"
+import { achievementsFrom, gamesFrom, peopleFrom, pickPerson, recentUnlocksFrom } from "./xbox-map.ts"
 
 const people = peopleFrom({
   code: 200,
@@ -143,4 +143,25 @@ const wrapped = achievementsFrom({ content: { achievements: page.achievements.le
 assert.equal(wrapped.achievements[0]?.name, "Wrapped")
 assert.equal(wrapped.achievements[0]?.unlockedAt, "achieved")
 
+console.log("ok")
+
+const recent = recentUnlocksFrom({
+  achievements: [
+    {
+      id: "7",
+      name: "First Blood",
+      progressState: "Achieved",
+      progression: { timeUnlocked: "2026-10-30T12:00:00Z" },
+      titleAssociations: [{ name: "Demo Racer", id: 1234 }],
+      rewards: [{ type: "Gamerscore", value: "15" }],
+      rarity: { currentPercentage: 42.5 },
+    },
+    { id: "8", name: "Locked", progressState: "NotStarted", titleAssociations: [{ name: "Demo Racer", id: 1234 }] },
+  ],
+})
+assert.equal(recent.length, 1)
+assert.equal(recent[0].game, "Demo Racer")
+assert.equal(recent[0].achievement.id, "1234:7")
+assert.equal(recent[0].achievement.score, 15)
+assert.equal(recent[0].achievement.unlockedAt, "2026-10-30")
 console.log("ok")

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next"
 
-// Alpha: keep the site out of search engines until it's ready to be found.
+// Crawlers may fetch pages so link previews (X, Discord) work; the noindex meta tag in the layout keeps the alpha out of search results.
 export default function robots(): MetadataRoute.Robots {
-  return { rules: { userAgent: "*", disallow: "/" } }
+  return { rules: { userAgent: "*", allow: "/" } }
 }

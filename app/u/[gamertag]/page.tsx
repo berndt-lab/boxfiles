@@ -1,56 +1,46 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { after } from "next/server"
 import { Suspense } from "react"
-import { ProfileView } from "@/components/profile-view"
-import { Avatar } from "@/components/ui"
-import { XboxSetup } from "@/components/xbox-setup"
-import { formatGs, tally, type Profile } from "@/lib/format"
-import { entryFromProfile, saveEntry } from "@/lib/leaderboard"
-import { displayTag, findProfile, listProfiles } from "@/lib/profile"
+import { ProfileView, type Filter } from "@/components/profile-view"
+import { Avatar, Gs, Meter } from "@/components/ui"
+import { SignInLink, XboxSetup } from "@/components/xbox-setup"
+import { formatGs, formatPct, type Profile } from "@/lib/format"
+import { entryByTag, entryFromProfile, saveEntry, type LeaderboardEntry } from "@/lib/leaderboard"
+import { displayTag } from "@/lib/profile"
 import { XboxError, currentSession, lookupXboxProfile } from "@/lib/xbox"
+import { authConfigured } from "@/lib/xbox-auth"
 
-type GamertagPage = { params: Promise<{ gamertag: string }> }
+type GamertagPage = PageProps<"/u/[gamertag]">
 
-export function generateStaticParams() {
-  return listProfiles().map((profile) => ({ gamertag: profile.gamertag }))
+async function publicEntry(gamertag: string) {
+  return entryByTag(displayTag(gamertag)).catch(() => null)
 }
 
 export async function generateMetadata({ params }: GamertagPage): Promise<Metadata> {
   const { gamertag } = await params
-  const profile = findProfile(gamertag)
-  if (!profile) return { title: displayTag(gamertag) || "Profile" }
-  const stats = tally(profile.games)
+  const entry = await publicEntry(gamertag)
+  if (!entry) return { title: displayTag(gamertag) || "Profile" }
   return {
-    title: profile.gamertag,
-    description: `${profile.gamertag} · ${formatGs(stats.earned)} gamerscore`,
+    title: entry.gamertag,
+    description: `${formatGs(entry.gamerscore)} gamerscore across ${entry.games} games on boxfiles.`,
   }
 }
 
-export default function Page({ params }: GamertagPage) {
+export default function Page({ params, searchParams }: GamertagPage) {
   return (
     <Suspense fallback={<ProfileSkeleton />}>
-      <ProfilePage params={params} />
+      <ProfilePage params={params} searchParams={searchParams} />
     </Suspense>
   )
 }
 
-async function ProfilePage({ params }: GamertagPage) {
-  const { gamertag } = await params
-  const sample = findProfile(gamertag)
-  if (sample) return <ProfileView key={sample.gamertag} profile={sample} />
-
+async function ProfilePage({ params, searchParams }: GamertagPage) {
+  const [{ gamertag }, query, session] = await Promise.all([params, searchParams, currentSession()])
   const label = displayTag(gamertag) || "that gamertag"
-  const session = await currentSession()
+
   if (!session) {
-    return (
-      <Notice title={<>No sample profile for “{label}”</>} body="Sign in with Xbox to look up real gamertags, or open one of the sample players.">
-        <div className="mt-6">
-          <XboxSetup />
-        </div>
-        <SampleLinks />
-      </Notice>
-    )
+    const entry = await publicEntry(gamertag)
+    return entry ? <PublicCard entry={entry} /> : <SignInNotice label={label} />
   }
 
   let profile: Profile | null = null
@@ -68,9 +58,7 @@ async function ProfilePage({ params }: GamertagPage) {
       <Notice
         title={<>No Xbox profile for “{label}”</>}
         body="Search uses the exact gamertag, including a #suffix when the name has one."
-      >
-        <SampleLinks />
-      </Notice>
+      />
     )
   }
   const entry = profile.xuid === session.xuid ? entryFromProfile(profile) : null
@@ -78,7 +66,65 @@ async function ProfilePage({ params }: GamertagPage) {
     // Viewing your own profile keeps your leaderboard row current.
     after(() => saveEntry(entry).catch(() => {}))
   }
-  return <ProfileView key={profile.gamertag} profile={profile} />
+  const game = typeof query.game === "string" ? query.game : undefined
+  const show: Filter | undefined = query.show === "locked" ? "locked" : undefined
+  return <ProfileView key={profile.gamertag} profile={profile} initialGame={game} initialFilter={show} />
+}
+
+/** What a shared link shows to someone who isn't signed in: the leaderboard card, plus a way in. */
+function PublicCard({ entry }: { entry: LeaderboardEntry }) {
+  const completion = entry.total === 0 ? 0 : entry.earned / entry.total
+  return (
+    <main className="mx-auto max-w-6xl px-4 pb-10 pt-14 sm:pt-20">
+      <section className="relative max-w-2xl overflow-hidden rounded-3xl border border-line bg-card">
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: "radial-gradient(520px 220px at 0% 0%, rgb(46 193 46 / 0.14), transparent 70%)" }}
+          aria-hidden
+        />
+        <div className="relative flex items-center gap-4 p-5 sm:gap-5 sm:p-7">
+          <Avatar name={entry.gamertag} src={entry.avatar} size="xl" />
+          <div className="min-w-0">
+            <h1 className="break-all font-display text-3xl font-semibold tracking-[-0.03em] sm:text-5xl">{entry.gamertag}</h1>
+            <p className="mt-1 text-sm text-muted">On the boxfiles leaderboard</p>
+          </div>
+        </div>
+        <dl className="relative grid grid-cols-3 gap-px border-t border-line bg-line">
+          <div className="bg-card px-5 py-4">
+            <dt className="text-xs text-muted">Gamerscore</dt>
+            <dd className="mt-1 font-display text-2xl font-semibold">
+              <Gs value={formatGs(entry.gamerscore)} />
+            </dd>
+          </div>
+          <div className="bg-card px-5 py-4">
+            <dt className="text-xs text-muted">Games</dt>
+            <dd className="mt-1 font-display text-2xl font-semibold tabular-nums">{formatGs(entry.games)}</dd>
+          </div>
+          <div className="bg-card px-5 py-4">
+            <dt className="text-xs text-muted">Completion</dt>
+            <dd className="mt-1 font-display text-2xl font-semibold tabular-nums">{formatPct(completion)}</dd>
+            <Meter value={completion} className="mt-2" color="var(--xbox)" />
+          </div>
+        </dl>
+      </section>
+      <div className="mt-8 flex max-w-2xl flex-wrap items-center gap-x-4 gap-y-3">
+        {authConfigured() ? <SignInLink /> : null}
+        <p className="max-w-sm text-sm text-muted">
+          Sign in with Xbox to see every game and achievement, and how you compare.
+        </p>
+      </div>
+    </main>
+  )
+}
+
+function SignInNotice({ label }: { label: string }) {
+  return (
+    <Notice title={<>Sign in to see “{label}”</>} body="Live profiles come straight from Xbox Live, so you need to be signed in.">
+      <div className="mt-6">
+        <XboxSetup />
+      </div>
+    </Notice>
+  )
 }
 
 function Notice({ title, body, children }: { title: React.ReactNode; body: string; children?: React.ReactNode }) {
@@ -88,27 +134,6 @@ function Notice({ title, body, children }: { title: React.ReactNode; body: strin
       <p className="mt-3 max-w-xl text-muted">{body}</p>
       {children}
     </main>
-  )
-}
-
-function SampleLinks() {
-  return (
-    <div className="mt-8">
-      <p className="text-sm text-muted">Sample players</p>
-      <ul className="mt-3 flex flex-wrap gap-2">
-        {listProfiles().map((player) => (
-          <li key={player.gamertag}>
-            <Link
-              href={`/u/${encodeURIComponent(player.gamertag)}`}
-              className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3.5 text-sm transition-colors hover:border-line-strong hover:bg-raised"
-            >
-              <Avatar name={player.gamertag} size="sm" />
-              {player.gamertag}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
   )
 }
 

@@ -3,7 +3,6 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { Suspense } from "react"
 import { SignInLink } from "@/components/xbox-setup"
-import { findProfile } from "@/lib/profile"
 import { REFRESH_COOKIE, SESSION_COOKIE } from "@/lib/session"
 import { currentSession } from "@/lib/xbox"
 import { authConfigured } from "@/lib/xbox-auth"
@@ -12,8 +11,7 @@ async function lookupGamertag(formData: FormData) {
   "use server"
   const tag = String(formData.get("gamertag") ?? "").trim()
   if (!tag) redirect("/")
-  const profile = findProfile(tag)
-  redirect(`/u/${encodeURIComponent(profile?.gamertag ?? tag)}`)
+  redirect(`/u/${encodeURIComponent(tag)}`)
 }
 
 async function signOut() {
@@ -28,15 +26,10 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-background/70 backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-        <Link href="/" className="group flex shrink-0 items-center gap-2" aria-label="xboxprofiles home">
+        <Link href="/" className="group flex shrink-0 items-center gap-2" aria-label="boxfiles home">
           <LogoMark />
-          <span className="hidden font-display text-[17px] font-semibold tracking-tight sm:inline">xboxprofiles</span>
+          <span className="hidden font-display text-[17px] font-semibold tracking-tight sm:inline">boxfiles</span>
         </Link>
-        <nav className="ml-2 hidden items-center gap-1 text-sm md:flex">
-          <Link href="/" className="rounded-full px-3 py-1.5 text-muted transition-colors hover:bg-raised hover:text-foreground">
-            Leaderboard
-          </Link>
-        </nav>
 
         <form action={lookupGamertag} className="ml-auto flex min-w-0 flex-1 justify-end sm:max-w-sm">
           <label className="group relative flex h-9 w-full items-center rounded-full border border-line bg-card pl-3 pr-1 transition-[border-color,box-shadow] duration-200 focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(255_255_255/0.04)]">
@@ -96,7 +89,10 @@ function LogoMark() {
   return (
     <span className="grid size-7 place-items-center rounded-lg bg-foreground text-background transition-transform duration-300 group-hover:rotate-[-6deg]">
       <svg viewBox="0 0 32 32" className="size-4" aria-hidden>
-        <path fill="currentColor" d="M10 6h8.2a7 7 0 0 1 0 14H14.5v6H10V6zm4.5 4.5v5h3.7a2.5 2.5 0 0 0 0-5h-3.7z" />
+        <g fill="none" stroke="currentColor" strokeWidth="4.5">
+          <path d="M12.25 6v19.75" />
+          <circle cx="17.5" cy="18.75" r="4.75" />
+        </g>
       </svg>
     </span>
   )

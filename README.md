@@ -1,10 +1,17 @@
-# xboxprofiles
+# boxfiles
 
-Show off Xbox achievements: gamerscore, game completion, and how rare each unlock is. Visitors sign in with their
-Microsoft account, and the app reads Xbox Live directly with their own token. Signed-in players appear on a public
-leaderboard ranked by gamerscore, and can leave it anytime.
+The achievement hunter's companion for Xbox. Sign in with a Microsoft account and boxfiles reads Xbox Live with your own
+token to show:
 
-Fan-made and independent of Microsoft. Alpha: the site asks search engines not to index it.
+- **Up next**: locked achievements most players already have, from the games you're closest to finishing.
+- **Almost done**: your games nearest 100%, with the gamerscore left in each.
+- **Friends**: you and your Xbox friends ranked by gamerscore, and how much you need to pass the next one.
+- **Recent unlocks** and full per-game achievement lists with rarity.
+- **A shareable profile**: signed-out visitors see a public card, and links unfurl with a generated preview image.
+
+Signed-in players join a global leaderboard and can leave it anytime, which also turns off their public card.
+
+Fan-made and independent of Microsoft. Alpha: pages carry `noindex`, so search engines leave it out.
 
 ## Local development
 
@@ -14,7 +21,8 @@ cp .env.example .env.local   # then fill it in, see below
 pnpm dev
 ```
 
-Open http://localhost:3000. Without leaderboard storage, the home page shows demo players instead of real rankings.
+Open http://localhost:3000. Without leaderboard storage the app still works; the global leaderboard, ranks, and public
+profile cards are simply hidden.
 
 Checks: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm check`, `pnpm build`. CI runs the same on every push.
 

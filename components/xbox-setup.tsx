@@ -29,7 +29,7 @@ export function XboxSetup() {
   return (
     <section className="max-w-xl rounded-2xl border border-line bg-card p-5">
       <h2 className="font-medium">Set up Xbox sign-in</h2>
-      <p className="mt-1 text-sm text-muted">Until then, the sample players below show how a profile looks.</p>
+      <p className="mt-1 text-sm text-muted">This server has no Microsoft app configured yet.</p>
       <ol className="mt-4 space-y-3">
         {steps.map((step, index) => (
           <li key={index} className="flex gap-3 text-sm text-muted">

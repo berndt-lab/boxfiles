@@ -2,6 +2,7 @@
 
 import { AnimatePresence, MotionConfig, motion } from "motion/react"
 import { useEffect, useState } from "react"
+import { CopyLink } from "@/components/copy-link"
 import { Avatar, Gs, Meter, Panel } from "@/components/ui"
 import {
   formatGs,
@@ -20,7 +21,7 @@ import {
   type RarityTone,
 } from "@/lib/format"
 
-type Filter = "all" | "unlocked" | "locked"
+export type Filter = "all" | "unlocked" | "locked"
 type Sort = "rarity" | "score" | "recent"
 
 const spring = { type: "spring", stiffness: 420, damping: 34, mass: 0.7 } as const
@@ -31,10 +32,20 @@ function firstGameId(profile: Profile) {
   return profile.games.find((game) => game.title === rarest.game)?.id ?? profile.games[0]?.id ?? ""
 }
 
-export function ProfileView({ profile }: { profile: Profile }) {
+export function ProfileView({
+  profile,
+  initialGame,
+  initialFilter = "unlocked",
+}: {
+  profile: Profile
+  initialGame?: string
+  initialFilter?: Filter
+}) {
   const [games, setGames] = useState(profile.games)
-  const [gameId, setGameId] = useState(() => firstGameId(profile))
-  const [filter, setFilter] = useState<Filter>("unlocked")
+  const [gameId, setGameId] = useState(() =>
+    initialGame && profile.games.some((game) => game.id === initialGame) ? initialGame : firstGameId(profile),
+  )
+  const [filter, setFilter] = useState<Filter>(initialFilter)
   const [sort, setSort] = useState<Sort>("rarity")
   const [loadError, setLoadError] = useState<string | null>(null)
   const stats = tally(games)
@@ -109,9 +120,6 @@ export function ProfileView({ profile }: { profile: Profile }) {
                   <h1 className="break-all font-display text-3xl font-semibold tracking-[-0.03em] sm:text-5xl">
                     {profile.gamertag}
                   </h1>
-                  <span className="rounded-full border border-line-strong px-2 py-0.5 text-[11px] text-muted">
-                    {profile.live ? "Xbox Live" : "Sample player"}
-                  </span>
                 </div>
                 {profile.bio ? <p className="mt-1.5 text-pretty text-muted">{profile.bio}</p> : null}
                 <ProfileFacts profile={profile} />
@@ -561,37 +569,3 @@ function TrophyIcon({ className = "" }: { className?: string }) {
     </svg>
   )
 }
-
-function CopyLink() {
-  const [copied, setCopied] = useState(false)
-  useEffect(() => {
-    if (!copied) return
-    const id = window.setTimeout(() => setCopied(false), 2000)
-    return () => window.clearTimeout(id)
-  }, [copied])
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        navigator.clipboard.writeText(window.location.href).then(() => setCopied(true), () => setCopied(false))
-      }}
-      className="relative h-8 shrink-0 overflow-hidden rounded-full border border-line bg-background px-3.5 text-sm text-muted transition-colors hover:border-line-strong hover:text-foreground"
-      aria-live="polite"
-    >
-      <AnimatePresence mode="popLayout" initial={false}>
-        <motion.span
-          key={copied ? "copied" : "copy"}
-          className="block"
-          initial={{ y: 12, opacity: 0, filter: "blur(4px)" }}
-          animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
-          exit={{ y: -12, opacity: 0, filter: "blur(4px)" }}
-          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-        >
-          {copied ? "Link copied" : "Copy link"}
-        </motion.span>
-      </AnimatePresence>
-    </button>
-  )
-}
-

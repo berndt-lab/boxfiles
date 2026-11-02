@@ -14,12 +14,20 @@ const bricolage = Bricolage_Grotesque({
   axes: ["opsz"],
 })
 
+function siteUrl() {
+  const redirect = process.env.XBOX_REDIRECT_URI?.trim()
+  if (redirect) return new URL(redirect).origin
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+  return vercel ? `https://${vercel}` : "http://localhost:3000"
+}
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl()),
   title: {
-    default: "xboxprofiles",
-    template: "%s · xboxprofiles",
+    default: "boxfiles",
+    template: "%s · boxfiles",
   },
-  description: "Show off Xbox achievements, gamerscore, and rare unlocks.",
+  description: "Know what to unlock next, out-score your friends, and show off your rarest Xbox achievements.",
   robots: { index: false, follow: false },
 }
 
@@ -31,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <div className="relative z-[1] flex-1">{children}</div>
         <footer className="relative z-[1] mt-16 border-t border-line">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-6 text-xs text-faint">
-            <span>xboxprofiles</span>
+            <span>boxfiles</span>
             <span>Live data comes from Xbox Live when you sign in. Fan-made and independent of Microsoft.</span>
           </div>
         </footer>

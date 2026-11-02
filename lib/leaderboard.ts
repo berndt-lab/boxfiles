@@ -5,11 +5,13 @@ import { tally, type Profile } from "@/lib/format"
 const SCORES = "lb:gamerscore"
 const PLAYERS = "lb:players"
 const HIDDEN = "lb:hidden"
+const TAGS = "lb:tags"
 export const LEADERBOARD_TAG = "leaderboard"
 
 export type LeaderboardEntry = {
   xuid: string
   gamertag: string
+  classicTag?: string
   avatar?: string
   gamerscore: number
   earned: number
@@ -44,7 +46,16 @@ async function redis(commands: (string | number)[][]): Promise<unknown[]> {
   })
 }
 
-/** Null when no storage is configured, so local dev can fall back to the sample players. */
+function parseEntry(row: unknown): LeaderboardEntry | null {
+  if (typeof row !== "string") return null
+  try {
+    return JSON.parse(row) as LeaderboardEntry
+  } catch {
+    return null
+  }
+}
+
+/** Null when no storage is configured. */
 export async function topPlayers(limit = 50): Promise<LeaderboardEntry[] | null> {
   "use cache"
   cacheLife("minutes")
@@ -55,13 +66,30 @@ export async function topPlayers(limit = 50): Promise<LeaderboardEntry[] | null>
   if (xuids.length === 0) return []
   const [rows] = await redis([["HMGET", PLAYERS, ...xuids]])
   return (Array.isArray(rows) ? rows : []).flatMap((row) => {
-    if (typeof row !== "string") return []
-    try {
-      return [JSON.parse(row) as LeaderboardEntry]
-    } catch {
-      return []
-    }
+    const entry = parseEntry(row)
+    return entry ? [entry] : []
   })
+}
+
+/** Public card data for a gamertag, so shared links show something to signed-out visitors. */
+export async function entryByTag(tag: string): Promise<LeaderboardEntry | null> {
+  "use cache"
+  cacheLife("minutes")
+  cacheTag(LEADERBOARD_TAG)
+  if (!storage()) return null
+  const [xuid] = await redis([["HGET", TAGS, tag.trim().toLowerCase()]])
+  if (typeof xuid !== "string") return null
+  const [row] = await redis([["HGET", PLAYERS, xuid]])
+  return parseEntry(row)
+}
+
+export async function rankOf(xuid: string): Promise<{ rank: number; total: number } | null> {
+  if (!storage()) return null
+  const [rank, total] = await redis([
+    ["ZREVRANK", SCORES, xuid],
+    ["ZCARD", SCORES],
+  ])
+  return typeof rank === "number" && typeof total === "number" ? { rank: rank + 1, total } : null
 }
 
 export function entryFromProfile(profile: Profile): LeaderboardEntry | null {
@@ -70,6 +98,7 @@ export function entryFromProfile(profile: Profile): LeaderboardEntry | null {
   return {
     xuid: profile.xuid,
     gamertag: profile.gamertag,
+    classicTag: profile.classicTag,
     avatar: profile.avatar,
     gamerscore: profile.gamerscore ?? stats.earned,
     earned: stats.earned,
@@ -84,9 +113,11 @@ export async function saveEntry(entry: LeaderboardEntry) {
   if (!storage()) return
   const [hidden] = await redis([["SISMEMBER", HIDDEN, entry.xuid]])
   if (hidden === 1) return
+  const tags = [entry.gamertag, entry.classicTag].filter((tag): tag is string => Boolean(tag))
   await redis([
     ["ZADD", SCORES, entry.gamerscore, entry.xuid],
     ["HSET", PLAYERS, entry.xuid, JSON.stringify(entry)],
+    ...tags.map((tag) => ["HSET", TAGS, tag.toLowerCase(), entry.xuid]),
   ])
 }
 
@@ -97,10 +128,14 @@ export async function isHidden(xuid: string) {
 }
 
 export async function leaveBoard(xuid: string) {
+  const [row] = await redis([["HGET", PLAYERS, xuid]])
+  const entry = parseEntry(row)
+  const tags = [entry?.gamertag, entry?.classicTag].filter((tag): tag is string => Boolean(tag))
   await redis([
     ["SADD", HIDDEN, xuid],
     ["ZREM", SCORES, xuid],
     ["HDEL", PLAYERS, xuid],
+    ...tags.map((tag) => ["HDEL", TAGS, tag.toLowerCase()]),
   ])
 }
 

@@ -248,3 +248,17 @@ function formatDuration(value: string) {
   if (!hours && !minutes) return ""
   return hours ? `${hours}h ${minutes}m` : `${minutes}m`
 }
+
+export type RecentUnlock = { achievement: Achievement; game: string; titleId: string }
+
+/** Cross-game unlock feed: each achievement names its game in titleAssociations. */
+export function recentUnlocksFrom(data: unknown): RecentUnlock[] {
+  return list(payload(data)?.achievements).flatMap((item) => {
+    const raw = record(item)
+    const title = record(list(raw?.titleAssociations)[0])
+    const titleId = title && (typeof title.id === "number" || typeof title.id === "string") ? String(title.id) : ""
+    const achievement = titleId ? mapAchievement(raw, titleId) : null
+    if (!achievement?.unlockedAt) return []
+    return [{ achievement, game: text(title?.name), titleId }]
+  })
+}
