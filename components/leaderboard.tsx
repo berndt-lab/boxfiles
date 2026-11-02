@@ -22,8 +22,8 @@ export async function Leaderboard({ me }: { me?: string }) {
     <Panel
       title="Global leaderboard"
       aside={
-        <span className="text-xs text-faint">
-          Top {players.length} {players.length === 1 ? "player" : "players"} on boxfiles
+        <span className="label-mono text-faint">
+          Top {players.length} {players.length === 1 ? "player" : "players"}
         </span>
       }
     >
@@ -32,7 +32,7 @@ export async function Leaderboard({ me }: { me?: string }) {
       ) : (
         <>
           <div
-            className={`hidden ${columns} items-center gap-4 border-b border-line px-4 py-2 text-xs text-faint sm:grid`}
+            className={`label-mono hidden ${columns} items-center gap-4 border-b border-line px-5 py-2.5 text-faint sm:grid`}
             aria-hidden
           >
             <span>#</span>
@@ -48,27 +48,29 @@ export async function Leaderboard({ me }: { me?: string }) {
                 <li key={player.xuid} className="border-b border-line last:border-b-0">
                   <Link
                     href={`/u/${encodeURIComponent(player.gamertag)}`}
-                    className={`group grid ${columns} items-center gap-x-4 gap-y-2 px-4 py-3.5 transition-colors duration-150 hover:bg-white/[0.025] ${
+                    className={`group grid ${columns} items-center gap-x-4 gap-y-2 px-5 py-4 transition-colors duration-300 hover:bg-white/[0.03] ${
                       mine ? "ambient-row" : ""
                     }`}
                   >
-                    <span className={`text-sm tabular-nums ${index < 3 ? "text-foreground" : "text-faint"}`}>{index + 1}</span>
+                    <span className={`label-mono tabular-nums ${index < 3 ? "text-foreground" : "text-faint"}`}>
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
                     <span className="flex min-w-0 items-center gap-3">
                       <Avatar name={player.gamertag} src={player.avatar} size="md" />
                       <span className="min-w-0">
-                        <span className="block truncate font-medium transition-colors group-hover:text-white">
+                        <span className="block truncate font-display text-lg font-semibold tracking-[-0.03em] transition-colors group-hover:text-white">
                           {player.gamertag}
                           {mine && <span className="ml-2 text-xs font-normal text-ambient">You</span>}
                         </span>
-                        <span className="block truncate text-sm text-muted">
+                        <span className="label-mono block truncate text-faint">
                           {player.games} {player.games === 1 ? "game" : "games"}
                         </span>
                       </span>
                     </span>
-                    <Gs value={formatGs(player.gamerscore)} className="text-right font-display text-lg font-semibold" />
+                    <Gs value={formatGs(player.gamerscore)} className="text-right font-display text-xl font-semibold tracking-[-0.03em]" />
                     <span className="col-span-2 col-start-2 flex items-center gap-3 sm:col-span-1 sm:col-start-auto">
                       <Meter value={completion} className="flex-1" />
-                      <span className="w-9 text-right text-xs tabular-nums text-muted">{formatPct(completion)}</span>
+                      <span className="label-mono w-10 text-right tabular-nums text-muted">{formatPct(completion)}</span>
                     </span>
                   </Link>
                 </li>

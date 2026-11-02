@@ -28,7 +28,7 @@ async function HomeContent({ searchParams }: Pick<PageProps<"/">, "searchParams"
 
 function HomeSkeleton() {
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-10 pt-14 sm:pt-20" aria-label="Loading">
+    <main className="shell pb-10 pt-14 sm:pt-20" aria-label="Loading">
       <span className="block h-12 w-full max-w-xl animate-pulse rounded-2xl bg-card" />
       <span className="mt-4 block h-5 w-full max-w-md animate-pulse rounded-full bg-card" />
     </main>

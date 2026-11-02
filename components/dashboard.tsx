@@ -4,7 +4,8 @@ import { after } from "next/server"
 import { Suspense, type ReactNode } from "react"
 import { CopyLink } from "@/components/copy-link"
 import { Leaderboard } from "@/components/leaderboard"
-import { Avatar, Gs, Meter, Panel } from "@/components/ui"
+import { CountUp } from "@/components/motion"
+import { ArrowIcon, Avatar, Gs, Meter, Panel, SectionHead } from "@/components/ui"
 import { XboxAmbient } from "@/components/xbox-ambient"
 import {
   formatGs,
@@ -58,12 +59,23 @@ async function joinLeaderboard() {
 /** The signed-in home: every section loads from Xbox Live on its own, so a slow one never holds up the rest. */
 export function Dashboard({ session, notice }: { session: XboxSession; notice?: ReactNode }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-10 pt-8 sm:pt-12">
+    <main className="shell pt-8 sm:pt-12">
       {notice}
-      <Suspense fallback={<Skeleton className="h-56 rounded-3xl" />}>
+      <Suspense fallback={<Skeleton className="h-72" />}>
         <Overview session={session} />
       </Suspense>
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <div className="mt-20 sm:mt-28">
+        <SectionHead
+          index="01"
+          label="Today's plan"
+          title={
+            <>
+              What to <em>unlock next</em>.
+            </>
+          }
+        />
+      </div>
+      <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
           <Suspense fallback={<Skeleton className="h-[26rem]" />}>
             <UpNext gamertag={session.gamertag} />
@@ -81,11 +93,22 @@ export function Dashboard({ session, notice }: { session: XboxSession; notice?: 
           </Suspense>
         </div>
       </div>
-      <div className="mt-10 space-y-3">
+      <div className="mt-20 sm:mt-28">
+        <SectionHead
+          index="02"
+          label="The board"
+          title={
+            <>
+              Where you <em>stand</em>.
+            </>
+          }
+        />
+      </div>
+      <div className="mt-10 space-y-4">
+        <Leaderboard me={session.xuid} />
         <Suspense fallback={null}>
           <Membership session={session} />
         </Suspense>
-        <Leaderboard me={session.xuid} />
       </div>
     </main>
   )
@@ -110,44 +133,55 @@ async function Overview({ session }: { session: XboxSession }) {
   }
   const stats = tally(profile.games)
   const gamerscore = profile.gamerscore ?? stats.earned
+  const completed = profile.games.filter((game) => (game.total ?? 0) > 0 && (game.earned ?? 0) >= (game.total ?? 0)).length
   return (
-    <section className="material light-strip relative overflow-hidden rounded-3xl border border-line">
+    <section>
       {profile.color && <XboxAmbient color={profile.color} />}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(640px 240px at 0% 0%, rgb(var(--ambient) / calc(0.18 * var(--glow))), transparent 70%)" }}
-        aria-hidden
-      />
-      <div className="relative flex flex-wrap items-center justify-between gap-5 p-5 sm:p-7">
-        <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+      <div className="label-mono flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
+        <span className="flex items-center gap-2">
+          <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
+          (You) Signed in
+        </span>
+        <span>{rank ? `Rank ${formatGs(rank.rank)} / ${formatGs(rank.total)}` : "Unranked"}</span>
+      </div>
+      <div className="mt-8 grid items-end gap-8 sm:mt-12 lg:grid-cols-12">
+        <div className="flex min-w-0 items-end gap-4 sm:gap-6 lg:col-span-7">
           <Avatar name={profile.gamertag} src={profile.avatar} size="xl" />
           <div className="min-w-0">
-            <p className="text-sm text-muted">Welcome back</p>
-            <h1 className="break-all font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
+            <p className="label-mono text-muted">Welcome back</p>
+            <h1 className="mt-2 break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
               {profile.gamertag}
             </h1>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={profileHref(profile.gamertag)}
-            className="grid h-8 place-items-center rounded-full bg-foreground px-3.5 text-sm font-medium text-background transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-95"
-          >
-            Your profile
-          </Link>
-          <CopyLink path={profileHref(profile.gamertag)} label="Copy share link" />
+        <div className="lg:col-span-5 lg:text-right">
+          <p className="label-mono text-muted">Gamerscore</p>
+          <p className="mt-2 font-display text-[clamp(3.75rem,10vw,9rem)] font-semibold leading-[0.82] tracking-[-0.06em] tabular-nums">
+            <CountUp value={gamerscore} />
+            <span className="ambient-text ml-[0.04em] align-top text-[0.34em] tracking-normal">G</span>
+          </p>
         </div>
       </div>
-      <dl className="relative grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4">
-        <Stat label="Gamerscore" value={<Gs value={formatGs(gamerscore)} />} />
+      <dl className="mt-10 grid grid-cols-2 border-t border-line sm:mt-14 sm:grid-cols-4">
         <Stat
           label="Global rank"
-          value={rank ? `#${formatGs(rank.rank)}` : "Unranked"}
-          hint={rank ? `of ${formatGs(rank.total)} on boxfiles` : undefined}
+          value={rank ? `#${formatGs(rank.rank)}` : "—"}
+          hint={rank ? `of ${formatGs(rank.total)} on boxfiles` : "Join the board to rank"}
         />
         <Stat label="Completion" value={formatPct(stats.completion)} meter={stats.completion} />
         <Stat label="Games" value={formatGs(profile.games.length)} />
+        <Stat label="Completed" value={formatGs(completed)} hint="at 100%" />
       </dl>
+      <div className="mt-8 flex flex-wrap items-center gap-2">
+        <Link
+          href={profileHref(profile.gamertag)}
+          className="group inline-flex h-11 items-center gap-2 rounded-full bg-foreground px-5 text-sm font-medium text-background transition-[box-shadow,transform] duration-300 hover:shadow-[0_0_32px_rgb(var(--ambient)/0.35)] active:scale-[0.97]"
+        >
+          Your full profile
+          <ArrowIcon className="size-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+        </Link>
+        <CopyLink path={profileHref(profile.gamertag)} label="Copy share link" />
+      </div>
     </section>
   )
 }
@@ -166,7 +200,7 @@ async function UpNext({ gamertag }: { gamertag: string }) {
       title="Up next"
       aside={
         picks.length > 0 ? (
-          <span className="text-xs text-faint">
+          <span className="label-mono text-faint">
             <Gs value={formatGs(total)} unitClassName="ml-0.5 text-faint" /> within reach
           </span>
         ) : null
@@ -220,7 +254,7 @@ async function AlmostDone({ gamertag }: { gamertag: string }) {
     .sort((a, b) => ratio(b) - ratio(a))
     .slice(0, 5)
   return (
-    <Panel title="Almost done" aside={<span className="text-xs text-faint">Closest to 100%</span>}>
+    <Panel title="Almost done" aside={<span className="label-mono text-faint">Closest to 100%</span>}>
       {games.length === 0 ? (
         <p className="px-4 py-8 text-sm text-muted">No unfinished games with achievements yet.</p>
       ) : (
@@ -271,7 +305,7 @@ async function Friends({ session }: { session: XboxSession }) {
       title="Friends"
       aside={
         friends.length > 0 ? (
-          <span className="text-xs text-faint">
+          <span className="label-mono text-faint">
             You&apos;re #{place + 1} of {board.length}
           </span>
         ) : null
@@ -389,11 +423,11 @@ function ratio(game: Game) {
 
 function Stat({ label, value, hint, meter }: { label: string; value: ReactNode; hint?: string; meter?: number }) {
   return (
-    <div className="bg-[#0b0b0d] px-5 py-4">
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="mt-1 font-display text-2xl font-semibold tracking-[-0.02em] tabular-nums">{value}</dd>
-      {hint && <p className="mt-0.5 text-xs text-faint">{hint}</p>}
-      {meter != null && <Meter value={meter} className="mt-2" />}
+    <div className="border-line py-5 pr-4 odd:pr-4 even:border-l even:pl-4 sm:border-l sm:pl-5 sm:first:border-l-0 sm:first:pl-0">
+      <dt className="label-mono text-muted">{label}</dt>
+      <dd className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] tabular-nums sm:text-4xl">{value}</dd>
+      {hint && <p className="label-mono mt-1 text-faint">{hint}</p>}
+      {meter != null && <Meter value={meter} className="mt-3 max-w-40" />}
     </div>
   )
 }

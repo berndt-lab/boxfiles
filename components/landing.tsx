@@ -1,73 +1,268 @@
 import type { ReactNode } from "react"
 import { Leaderboard } from "@/components/leaderboard"
+import { Reveal, RevealLines } from "@/components/motion"
+import { Marquee, SectionHead } from "@/components/ui"
 import { SignInLink, XboxSetup } from "@/components/xbox-setup"
+import { formatGs, rarityColor, type RarityTone } from "@/lib/format"
+import { topPlayers } from "@/lib/leaderboard"
 import { authConfigured } from "@/lib/xbox-auth"
 
-const features = [
+const features: { title: ReactNode; body: string; visual: ReactNode }[] = [
   {
-    title: "Up next",
+    title: (
+      <>
+        Up <em>next</em>
+      </>
+    ),
     body: "Locked achievements most players already have, pulled from the games you're closest to finishing. Your easiest gamerscore, in order.",
+    visual: <StackVisual />,
   },
   {
-    title: "Friends rivalry",
+    title: (
+      <>
+        Friends <em>rivalry</em>
+      </>
+    ),
     body: "You and your Xbox friends, ranked by gamerscore, with exactly how much you need to pass the next one.",
+    visual: <RaceVisual />,
   },
   {
-    title: "A profile worth sharing",
-    body: "Every game, every unlock, and how rare it is. One link with a preview card for Discord, Reddit, or X.",
+    title: (
+      <>
+        Worth <em>sharing</em>
+      </>
+    ),
+    body: "Every game, every unlock, and how rare it is. One link that unfurls into a card on Discord, Reddit, or X.",
+    visual: <CardVisual />,
   },
 ]
 
-/** The signed-out home: what boxfiles does, one button to start, and the board you'd join. */
+const tiers: { tone: RarityTone; label: string; range: string; width: number }[] = [
+  { tone: "ultra", label: "Ultra rare", range: "Under 5%", width: 5 },
+  { tone: "very", label: "Very rare", range: "5–10%", width: 5 },
+  { tone: "rare", label: "Rare", range: "10–25%", width: 15 },
+  { tone: "uncommon", label: "Uncommon", range: "25–50%", width: 25 },
+  { tone: "common", label: "Common", range: "50% and up", width: 50 },
+]
+
+/** The signed-out home: an editorial pitch, one way in, and the live board you'd join. */
 export function Landing({ notice }: { notice?: ReactNode }) {
   const ready = authConfigured()
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-10 pt-14 sm:pt-20">
-      <p className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1 text-xs text-muted">
-        <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
-        Alpha · free for Xbox players
-      </p>
-      <h1 className="mt-5 max-w-3xl text-balance font-display text-4xl font-semibold tracking-[-0.03em] sm:text-6xl">
-        Your next 1,000 gamerscore, mapped out.
-      </h1>
-      <p className="mt-4 max-w-xl text-pretty text-muted sm:text-lg">
-        boxfiles reads your Xbox achievements and shows the easiest ones left to unlock, how you stack up against your
-        friends, and the rare unlocks worth bragging about.
-      </p>
+    <main>
+      <section className="shell pt-8 sm:pt-12">
+        <div className="label-mono flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
+          <span className="flex items-center gap-2">
+            <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
+            <span className="normal-case">(α)</span> Alpha release
+          </span>
+          <span className="hidden sm:block">For Xbox achievement hunters</span>
+          <span>Free · Read-only</span>
+        </div>
 
-      {notice}
+        <h1 className="display-em mt-8 font-display text-[clamp(3.25rem,12.6vw,12.5rem)] font-semibold leading-[0.86] tracking-[-0.06em] sm:mt-12">
+          <RevealLines
+            lines={[
+              "Your next",
+              <span key="score">
+                1,000<span className="ml-[0.04em] align-top text-[0.42em] tracking-normal text-muted">G</span>
+              </span>,
+              <em key="mapped" className="ambient-text pr-[0.08em]">
+                mapped out.
+              </em>,
+            ]}
+          />
+        </h1>
 
-      <div className="mt-8">
-        {ready ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-            <SignInLink />
-            <p className="max-w-sm text-xs text-faint">
-              Sign in with your Microsoft account. Read-only: boxfiles never posts or changes anything on Xbox. Your
-              gamertag and gamerscore join the public leaderboard, and you can leave anytime.
+        {notice}
+
+        <div className="mt-10 grid gap-8 border-t border-line pt-8 sm:mt-14 sm:grid-cols-12">
+          <Reveal className="sm:col-span-5" delay={0.35}>
+            <p className="text-pretty text-lg leading-relaxed text-muted sm:text-xl">
+              boxfiles reads your Xbox achievements and shows the easiest ones left to unlock, how you stack up against
+              your friends, and the rare unlocks worth bragging about.
             </p>
+          </Reveal>
+          <Reveal className="sm:col-span-5 sm:col-start-8" delay={0.45}>
+            {ready ? (
+              <div className="flex flex-col items-start gap-4">
+                <SignInLink size="lg" />
+                <p className="max-w-sm text-xs leading-relaxed text-faint">
+                  Microsoft sign-in, read-only: boxfiles never posts or changes anything on Xbox. Your gamertag and
+                  gamerscore join the public leaderboard, and you can leave anytime.
+                </p>
+              </div>
+            ) : (
+              <XboxSetup />
+            )}
+          </Reveal>
+        </div>
+      </section>
+
+      <div className="mt-20 sm:mt-28">
+        <Ticker />
+      </div>
+
+      <section id="how" className="shell mt-24 scroll-mt-24 sm:mt-32">
+        <SectionHead
+          index="01"
+          label="What you get"
+          title={
+            <>
+              Three reasons to <em>open it daily</em>.
+            </>
+          }
+        />
+        <ol className="mt-10">
+          {features.map((feature, index) => (
+            <li key={index}>
+              <Reveal>
+                <div className="row-light light-strip relative grid items-center gap-6 border-t border-line py-10 transition-colors duration-500 hover:bg-white/[0.015] sm:grid-cols-12 sm:py-14">
+                  <span className="label-mono text-muted sm:col-span-1">(0{index + 1})</span>
+                  <h3 className="display-em font-display text-5xl font-semibold leading-[0.9] tracking-[-0.05em] sm:col-span-5 sm:text-7xl">
+                    {feature.title}
+                  </h3>
+                  <p className="max-w-md text-pretty text-muted sm:col-span-4">{feature.body}</p>
+                  <div className="sm:col-span-2 sm:justify-self-end">{feature.visual}</div>
+                </div>
+              </Reveal>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="shell mt-24 sm:mt-32">
+        <SectionHead
+          index="02"
+          label="Rarity, decoded"
+          title={
+            <>
+              Every unlock, ranked by <em>how few</em> have it.
+            </>
+          }
+        />
+        <Reveal className="mt-12">
+          <div className="flex h-3 overflow-hidden rounded-full">
+            {tiers.map((tier) => (
+              <span
+                key={tier.tone}
+                style={{ width: `${tier.width}%`, background: rarityColor[tier.tone], boxShadow: `0 0 24px ${rarityColor[tier.tone]}66` }}
+              />
+            ))}
           </div>
-        ) : (
-          <XboxSetup />
-        )}
-      </div>
+          <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-5">
+            {tiers.map((tier) => (
+              <li key={tier.tone} className="border-t border-line pt-3">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <span className="size-2 rounded-full" style={{ background: rarityColor[tier.tone] }} aria-hidden />
+                  {tier.label}
+                </p>
+                <p className="label-mono mt-1 text-faint">{tier.range} of players</p>
+              </li>
+            ))}
+          </ul>
+        </Reveal>
+      </section>
 
-      <ul className="mt-14 grid gap-4 sm:grid-cols-3">
-        {features.map((feature) => (
-          <li key={feature.title} className="material light-strip relative overflow-hidden rounded-2xl border border-line p-5">
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{ background: "radial-gradient(280px 120px at 0% 0%, rgb(var(--ambient) / calc(0.14 * var(--glow))), transparent 70%)" }}
-              aria-hidden
-            />
-            <h2 className="relative font-medium">{feature.title}</h2>
-            <p className="relative mt-1.5 text-sm text-muted">{feature.body}</p>
-          </li>
-        ))}
-      </ul>
+      <section id="board" className="shell mt-24 scroll-mt-24 sm:mt-32">
+        <SectionHead
+          index="03"
+          label="The board"
+          title={
+            <>
+              Who&apos;s <em>on top</em> right now.
+            </>
+          }
+        />
+        <Reveal className="mt-10">
+          <Leaderboard />
+        </Reveal>
+      </section>
 
-      <div className="mt-14">
-        <Leaderboard />
-      </div>
+      {ready && (
+        <section className="shell mt-28 sm:mt-40">
+          <Reveal>
+            <div className="grid items-end gap-8 border-t border-line pt-10 sm:grid-cols-12">
+              <h2 className="display-em font-display text-6xl font-semibold leading-[0.88] tracking-[-0.055em] sm:col-span-8 sm:text-[9rem]">
+                Start <em className="ambient-text pr-[0.06em]">hunting.</em>
+              </h2>
+              <div className="sm:col-span-4 sm:justify-self-end">
+                <SignInLink size="lg" />
+              </div>
+            </div>
+          </Reveal>
+        </section>
+      )}
     </main>
+  )
+}
+
+/** The live board as a ticker: real gamertags and scores, or the product's vocabulary before anyone signs in. */
+async function Ticker() {
+  const players = await topPlayers(20).catch(() => null)
+  const items =
+    players && players.length > 0
+      ? players.map((player) => ({ key: player.xuid, label: player.gamertag, value: `${formatGs(player.gamerscore)}G` }))
+      : ["Up next", "Friends rivalry", "Rarity", "Almost done", "Recent unlocks", "Share cards"].map((label) => ({
+          key: label,
+          label,
+          value: "",
+        }))
+  return (
+    <Marquee seconds={Math.max(30, items.length * 5)}>
+      {items.map((item) => (
+        <span key={item.key} className="flex items-center gap-4 px-6 sm:gap-6 sm:px-10">
+          <span className="font-display text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{item.label}</span>
+          {item.value ? <span className="label-mono text-muted">{item.value}</span> : null}
+          <span className="ambient-text text-2xl sm:text-3xl" aria-hidden>
+            ✦
+          </span>
+        </span>
+      ))}
+    </Marquee>
+  )
+}
+
+function StackVisual() {
+  return (
+    <div className="flex w-36 flex-col gap-2" aria-hidden>
+      {[1, 0.78, 0.6, 0.42].map((width, index) => (
+        <span
+          key={index}
+          className="ambient-glow block h-2 rounded-full"
+          style={{
+            width: `${width * 100}%`,
+            opacity: 1 - index * 0.2,
+            background: "linear-gradient(90deg, rgb(var(--ambient)), rgb(var(--ambient-2)))",
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function RaceVisual() {
+  return (
+    <div className="flex w-36 flex-col gap-3" aria-hidden>
+      <span className="block h-2 w-full rounded-full bg-white/15" />
+      <span className="relative block h-2 w-[82%] rounded-full">
+        <span
+          className="ambient-glow absolute inset-0 rounded-full"
+          style={{ background: "linear-gradient(90deg, rgb(var(--ambient)), rgb(var(--ambient-2)))" }}
+        />
+        <span className="absolute -right-[22%] top-1/2 h-px w-[18%] -translate-y-1/2 border-t border-dashed border-white/40" />
+      </span>
+    </div>
+  )
+}
+
+function CardVisual() {
+  return (
+    <div className="relative h-20 w-36 rounded-xl border border-line-strong bg-white/[0.02] p-3" aria-hidden>
+      <span className="block size-6 rounded-full" style={{ background: "linear-gradient(135deg, rgb(var(--ambient)), rgb(var(--ambient-2)))" }} />
+      <span className="mt-2 block h-1.5 w-16 rounded-full bg-white/30" />
+      <span className="mt-1.5 block h-1.5 w-10 rounded-full bg-white/15" />
+      <span className="ambient-glow absolute bottom-3 right-3 h-1.5 w-8 rounded-full bg-ambient" />
+    </div>
   )
 }

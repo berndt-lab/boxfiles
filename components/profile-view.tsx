@@ -100,41 +100,40 @@ export function ProfileView({
 
   return (
     <MotionConfig reducedMotion="user">
-      <main className="mx-auto max-w-6xl px-4 pb-10 pt-8 sm:pt-12">
+      <main className="shell pb-10 pt-8 sm:pt-12">
         {/* Profile header */}
-        <section className="material light-strip relative overflow-hidden rounded-3xl border border-line">
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background: "radial-gradient(640px 220px at 0% 0%, rgb(var(--ambient) / calc(0.18 * var(--glow))), transparent 70%)",
-            }}
-            aria-hidden
-          />
-          <div className="relative flex flex-wrap items-center justify-between gap-6 p-5 sm:p-7">
-            <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+        <section>
+          <div className="label-mono flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
+            <span className="flex items-center gap-2">
+              <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
+              (Profile) Xbox Live
+            </span>
+            <CopyLink />
+          </div>
+          <div className="mt-8 grid items-end gap-8 sm:mt-12 lg:grid-cols-12">
+            <div className="flex min-w-0 items-end gap-4 sm:gap-6 lg:col-span-7">
               <Avatar name={profile.gamertag} src={profile.avatar} size="xl" />
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h1 className="break-all font-display text-3xl font-semibold tracking-[-0.03em] sm:text-5xl">
-                    {profile.gamertag}
-                  </h1>
-                </div>
-                {profile.bio ? <p className="mt-1.5 text-pretty text-muted">{profile.bio}</p> : null}
+                <h1 className="break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
+                  {profile.gamertag}
+                </h1>
+                {profile.bio ? <p className="mt-3 max-w-xl text-pretty text-muted">{profile.bio}</p> : null}
                 <ProfileFacts profile={profile} />
               </div>
             </div>
-            <div className="flex w-full items-end justify-between gap-4 sm:w-auto sm:flex-col sm:items-end sm:gap-3">
-              <div className="sm:text-right">
-                <p className="text-xs text-muted">Gamerscore</p>
-                <p className="font-display text-4xl font-semibold tracking-[-0.03em] sm:text-5xl" title="Gamerscore">
-                  <Gs value={formatGs(headline)} unitClassName="ml-1 text-[0.5em] text-faint" />
-                </p>
-                {stats.total > 0 && <p className="text-sm text-faint">of {formatGs(stats.total)} possible</p>}
-              </div>
-              <CopyLink />
+            <div className="lg:col-span-5 lg:text-right">
+              <p className="label-mono text-muted">Gamerscore</p>
+              <p
+                className="mt-2 font-display text-[clamp(3.5rem,9vw,8rem)] font-semibold leading-[0.82] tracking-[-0.06em] tabular-nums"
+                title="Gamerscore"
+              >
+                {formatGs(headline)}
+                <span className="ambient-text ml-[0.04em] align-top text-[0.34em] tracking-normal">G</span>
+              </p>
+              {stats.total > 0 && <p className="label-mono mt-3 text-faint">of {formatGs(stats.total)} possible</p>}
             </div>
           </div>
-          <dl className="relative grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4">
+          <dl className="mt-10 grid grid-cols-2 border-t border-line sm:mt-14 sm:grid-cols-4">
             <Stat label="Games" value={String(games.length)} />
             <Stat
               label="Achievements"
@@ -157,7 +156,7 @@ export function ProfileView({
             </div>
           </Panel>
         ) : (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
+          <div className="mt-14 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
             <aside className="flex flex-col gap-6 lg:sticky lg:top-20">
               <Panel title="Games" aside={<span className="text-xs tabular-nums text-faint">{games.length}</span>}>
                 <ul className="scroll-thin max-h-[22rem] space-y-0.5 overflow-y-auto p-1.5 lg:max-h-[min(30rem,calc(100vh-22rem))]">
@@ -545,15 +544,15 @@ function unlockStatus(achievement: Achievement) {
 
 function Stat({ label, value, meter, tone }: { label: string; value: string; meter?: number; tone?: RarityTone }) {
   return (
-    <div className="bg-card px-5 py-4 sm:px-7">
-      <dt className="text-xs text-muted">{label}</dt>
+    <div className="border-line py-5 pr-4 even:border-l even:pl-4 sm:border-l sm:pl-5 sm:first:border-l-0 sm:first:pl-0">
+      <dt className="label-mono text-muted">{label}</dt>
       <dd
-        className="mt-1 font-display text-2xl font-semibold tabular-nums tracking-[-0.02em]"
+        className="mt-2 font-display text-3xl font-semibold tabular-nums tracking-[-0.04em] sm:text-4xl"
         style={tone ? { color: rarityColor[tone] } : undefined}
       >
         {value}
       </dd>
-      {meter != null && <Meter value={meter} className="mt-2" />}
+      {meter != null && <Meter value={meter} className="mt-3 max-w-40" />}
     </div>
   )
 }

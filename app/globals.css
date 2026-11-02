@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
-  --foreground: #ededef;
-  --muted: #8f9098;
-  --faint: #5c5d64;
+  --background: #050506;
+  --foreground: #f3f2ef;
+  --muted: #8d8d93;
+  --faint: #5a5a60;
   --card: #0b0b0d;
   --raised: #141417;
-  --line: #1d1d21;
-  --line-strong: #2a2a30;
+  --line: #19191c;
+  --line-strong: #2a2a2f;
   --xbox: #2ec12e;
 
   /* Ambient lighting: two zones as "r g b" triplets plus a 0–1 brightness. The head script and the
@@ -38,6 +38,38 @@
   --color-ambient-2: rgb(var(--ambient-2));
   --font-sans: var(--font-geist-sans);
   --font-display: var(--font-bricolage);
+  --font-serif: var(--font-instrument);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* The page column: wide, with generous gutters, shared by every section. */
+@utility shell {
+  width: 100%;
+  max-width: 1400px;
+  margin-inline: auto;
+  padding-inline: 20px;
+  @media (width >= 40rem) {
+    padding-inline: 32px;
+  }
+}
+
+/* Small uppercase mono labels: section indexes, meta rows, panel titles. */
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Serif italic accents inside display headlines: <em> reads as a designed word, not emphasis. */
+@utility display-em {
+  & em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
 }
 
 html {
@@ -50,19 +82,16 @@ body {
   font-feature-settings: "ss01", "cv11";
 }
 
-/* A faint grid behind the top of every page, fading out as you scroll down. */
+/* Film grain over the whole page, the quiet texture that keeps flat black from looking empty. */
 body::before {
   content: "";
   position: fixed;
-  inset: 0 0 auto 0;
-  height: 520px;
+  inset: 0;
   pointer-events: none;
-  z-index: 0;
-  background-image:
-    linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 70% 100% at 50% 0%, black 30%, transparent 75%);
+  z-index: 40;
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Footwell light: soft pools of the two ambient zones washing in from the top corners. */
@@ -123,6 +152,36 @@ body::after {
 .ambient-row {
   background: linear-gradient(90deg, rgb(var(--ambient) / calc(0.14 * var(--glow))), transparent 70%);
   box-shadow: inset 2px 0 0 rgb(var(--ambient) / calc(0.9 * var(--glow)));
+}
+
+/* Text lit in the ambient colors, for the big wordmark and accent words. */
+.ambient-text {
+  background: linear-gradient(90deg, rgb(var(--ambient)), rgb(var(--ambient-2)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* An endless horizontal ticker; the track holds its content twice and slides by half. */
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  animation: marquee var(--marquee-duration, 40s) linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+/* Rows that light up on hover: the trim strip fades in along the top edge. */
+.row-light::before {
+  opacity: 0;
+}
+.row-light:hover::before,
+.row-light:focus-within::before {
+  opacity: calc(0.9 * var(--glow));
 }
 
 /* Thin, quiet scrollbars for the scrolling panels. */

@@ -1,3 +1,4 @@
+import { ArrowIcon } from "@/components/ui"
 import { leaderboardReady } from "@/lib/leaderboard"
 import { authConfigured } from "@/lib/xbox-auth"
 
@@ -61,17 +62,24 @@ function SignInCard() {
   )
 }
 
-export function SignInLink({ compact = false }: { compact?: boolean }) {
+export function SignInLink({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
+  const box = {
+    sm: "h-9 gap-2 pl-1.5 pr-3.5 text-sm",
+    md: "h-11 gap-2.5 pl-1.5 pr-4 text-sm",
+    lg: "h-14 gap-3 pl-2 pr-6 text-base",
+  }[size]
+  const mark = { sm: "size-6", md: "size-8", lg: "size-10" }[size]
   return (
     // A plain anchor: the login route answers with a redirect to Microsoft, which client navigation can't follow.
     <a
       href="/api/auth/login"
-      className={`inline-flex shrink-0 items-center gap-2 rounded-full bg-[#107c10] font-medium text-white transition-[filter,transform] duration-150 hover:brightness-110 active:scale-95 ${
-        compact ? "h-9 px-3.5 text-sm" : "h-10 px-4 text-sm"
-      }`}
+      className={`group inline-flex shrink-0 items-center rounded-full bg-foreground font-medium text-background transition-[transform,box-shadow] duration-300 hover:shadow-[0_0_32px_rgb(var(--ambient)/0.35)] active:scale-[0.97] ${box}`}
     >
-      <XboxMark />
-      Sign in
+      <span className={`grid place-items-center rounded-full bg-[#107c10] text-white ${mark}`}>
+        <XboxMark />
+      </span>
+      {size === "sm" ? "Sign in" : "Sign in with Xbox"}
+      <ArrowIcon className="size-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
     </a>
   )
 }

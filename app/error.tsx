@@ -9,11 +9,12 @@ export default function Error({ error, retry }: { error: unknown; retry: () => v
   }, [error])
 
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-10 pt-14 sm:pt-20">
-      <h1 className="max-w-2xl font-display text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-        Something went wrong
+    <main className="shell pb-10 pt-14 sm:pt-20">
+      <p className="label-mono text-muted">(Error) Something broke</p>
+      <h1 className="display-em mt-6 max-w-4xl font-display text-5xl font-semibold leading-[0.92] tracking-[-0.05em] sm:text-8xl">
+        That didn&apos;t <em>load</em>.
       </h1>
-      <p className="mt-3 max-w-xl text-muted">
+      <p className="mt-5 max-w-xl text-lg text-muted">
         Xbox Live may be slow or briefly unavailable. Try again, or head back to the start.
       </p>
       <div className="mt-6 flex gap-2">
