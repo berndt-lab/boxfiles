@@ -27,7 +27,7 @@ export function XboxSetup() {
     </>,
   ]
   return (
-    <section className="max-w-xl rounded-2xl border border-line bg-card p-5">
+    <section className="max-w-xl material light-strip relative rounded-2xl border border-line p-5">
       <h2 className="font-medium">Set up Xbox sign-in</h2>
       <p className="mt-1 text-sm text-muted">This server has no Microsoft app configured yet.</p>
       <ol className="mt-4 space-y-3">
@@ -46,7 +46,7 @@ export function XboxSetup() {
 
 function SignInCard() {
   return (
-    <section className="flex max-w-xl flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-card p-5">
+    <section className="flex max-w-xl flex-wrap items-center justify-between gap-4 material light-strip relative rounded-2xl border border-line p-5">
       <div className="min-w-0">
         <h2 className="font-medium">Sign in with Xbox</h2>
         <p className="mt-1 text-sm text-muted">See your own gamerscore and look up any gamertag with live data.</p>

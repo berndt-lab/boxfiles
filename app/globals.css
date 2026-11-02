@@ -11,6 +11,12 @@
   --line-strong: #2a2a30;
   --xbox: #2ec12e;
 
+  /* Ambient lighting: two zones as "r g b" triplets plus a 0–1 brightness. The head script and the
+     ambient control overwrite these from the viewer's saved choice. */
+  --ambient: 76 195 255;
+  --ambient-2: 76 195 255;
+  --glow: 0.7;
+
   --rarity-ultra: #f5c542;
   --rarity-very: #c79bff;
   --rarity-rare: #62c0ff;
@@ -28,6 +34,8 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-xbox: var(--xbox);
+  --color-ambient: rgb(var(--ambient));
+  --color-ambient-2: rgb(var(--ambient-2));
   --font-sans: var(--font-geist-sans);
   --font-display: var(--font-bricolage);
 }
@@ -57,13 +65,64 @@ body::before {
   mask-image: radial-gradient(ellipse 70% 100% at 50% 0%, black 30%, transparent 75%);
 }
 
+/* Footwell light: soft pools of the two ambient zones washing in from the top corners. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(900px 420px at 0% -10%, rgb(var(--ambient) / calc(0.16 * var(--glow))), transparent 70%),
+    radial-gradient(900px 420px at 100% -10%, rgb(var(--ambient-2) / calc(0.13 * var(--glow))), transparent 70%);
+  transition: background 0.6s ease;
+}
+
 ::selection {
-  background: rgb(255 255 255 / 0.18);
+  background: rgb(var(--ambient) / 0.28);
 }
 
 :focus-visible {
-  outline: 2px solid var(--foreground);
+  outline: 2px solid rgb(var(--ambient));
   outline-offset: 2px;
+}
+
+/* A thin light strip, like the trim line in a car door: brightest in the middle, fading at the ends.
+   The element needs its own positioning (relative, sticky, absolute) for the strip to sit on it. */
+.light-strip::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(var(--ambient)), rgb(var(--ambient-2)), transparent);
+  opacity: calc(0.9 * var(--glow));
+  box-shadow: 0 0 12px 1px rgb(var(--ambient) / calc(0.55 * var(--glow)));
+  transition: opacity 0.4s ease;
+}
+.light-strip-bottom::before {
+  top: auto;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+}
+
+/* Panels: dark graphite with a faint top sheen, lit from the strip above. */
+.material {
+  background:
+    linear-gradient(180deg, rgb(var(--ambient) / calc(0.05 * var(--glow))), transparent 120px),
+    linear-gradient(180deg, #0e0e11, #09090b);
+}
+
+/* Glow for lit elements: meters, active rows, the "you" highlight. */
+.ambient-glow {
+  box-shadow: 0 0 14px rgb(var(--ambient) / calc(0.5 * var(--glow)));
+}
+.ambient-row {
+  background: linear-gradient(90deg, rgb(var(--ambient) / calc(0.14 * var(--glow))), transparent 70%);
+  box-shadow: inset 2px 0 0 rgb(var(--ambient) / calc(0.9 * var(--glow)));
 }
 
 /* Thin, quiet scrollbars for the scrolling panels. */
@@ -79,4 +138,30 @@ body::before {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
+
+/* Sliders in the ambient panel: a lit track with a round, glowing knob. */
+.ambient-range {
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  outline-offset: 4px;
+  cursor: pointer;
+}
+.ambient-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f5f5f7;
+  border: 2px solid #0b0b0d;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.4), 0 0 12px rgb(var(--ambient) / 0.8);
+}
+.ambient-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f5f5f7;
+  border: 2px solid #0b0b0d;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.4), 0 0 12px rgb(var(--ambient) / 0.8);
 }

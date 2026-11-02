@@ -14,6 +14,7 @@ const people = peopleFrom({
         displayPicRaw: "https://example.test/a.png",
         xboxOneRep: "GoodPlayer",
         detail: { bio: "Chasing rares.", accountTier: "Gold", followerCount: 2, followingCount: 1, hasGamePass: true },
+        preferredColor: { primaryColor: "E31C79", secondaryColor: "8E0F4C", tertiaryColor: "B8135F" },
       },
       { xuid: "1", gamertag: "Other" },
     ],
@@ -43,6 +44,8 @@ assert.equal(gamesFrom({ content: { titles: [] } }).length, 0)
 assert.equal(pickPerson(people, "novaforge#1234")?.xuid, "2533274798129181")
 assert.equal(pickPerson(people, "novaforge")?.gamerscore, 1180)
 assert.equal(pickPerson(people, "novaforge")?.bio, "Chasing rares.")
+assert.equal(pickPerson(people, "novaforge")?.color, "#e31c79")
+assert.equal(pickPerson(people, "other")?.color, undefined)
 assert.equal(pickPerson(people, "novaforge")?.classicTag, "NovaForge")
 assert.equal(pickPerson(people, "novaforge")?.avatar, "https://example.test/a.png")
 assert.equal(pickPerson(people, "novaforge")?.tier, "Gold")

@@ -3,6 +3,7 @@ import { after } from "next/server"
 import { Suspense } from "react"
 import { ProfileView, type Filter } from "@/components/profile-view"
 import { Avatar, Gs, Meter } from "@/components/ui"
+import { XboxAmbient } from "@/components/xbox-ambient"
 import { SignInLink, XboxSetup } from "@/components/xbox-setup"
 import { formatGs, formatPct, type Profile } from "@/lib/format"
 import { entryByTag, entryFromProfile, saveEntry, type LeaderboardEntry } from "@/lib/leaderboard"
@@ -68,7 +69,12 @@ async function ProfilePage({ params, searchParams }: GamertagPage) {
   }
   const game = typeof query.game === "string" ? query.game : undefined
   const show: Filter | undefined = query.show === "locked" ? "locked" : undefined
-  return <ProfileView key={profile.gamertag} profile={profile} initialGame={game} initialFilter={show} />
+  return (
+    <>
+      {entry && profile.color && <XboxAmbient color={profile.color} />}
+      <ProfileView key={profile.gamertag} profile={profile} initialGame={game} initialFilter={show} />
+    </>
+  )
 }
 
 /** What a shared link shows to someone who isn't signed in: the leaderboard card, plus a way in. */
@@ -76,10 +82,10 @@ function PublicCard({ entry }: { entry: LeaderboardEntry }) {
   const completion = entry.total === 0 ? 0 : entry.earned / entry.total
   return (
     <main className="mx-auto max-w-6xl px-4 pb-10 pt-14 sm:pt-20">
-      <section className="relative max-w-2xl overflow-hidden rounded-3xl border border-line bg-card">
+      <section className="material light-strip relative max-w-2xl overflow-hidden rounded-3xl border border-line">
         <div
           className="pointer-events-none absolute inset-0"
-          style={{ background: "radial-gradient(520px 220px at 0% 0%, rgb(46 193 46 / 0.14), transparent 70%)" }}
+          style={{ background: "radial-gradient(520px 220px at 0% 0%, rgb(var(--ambient) / calc(0.18 * var(--glow))), transparent 70%)" }}
           aria-hidden
         />
         <div className="relative flex items-center gap-4 p-5 sm:gap-5 sm:p-7">
@@ -103,7 +109,7 @@ function PublicCard({ entry }: { entry: LeaderboardEntry }) {
           <div className="bg-card px-5 py-4">
             <dt className="text-xs text-muted">Completion</dt>
             <dd className="mt-1 font-display text-2xl font-semibold tabular-nums">{formatPct(completion)}</dd>
-            <Meter value={completion} className="mt-2" color="var(--xbox)" />
+            <Meter value={completion} className="mt-2" />
           </div>
         </dl>
       </section>

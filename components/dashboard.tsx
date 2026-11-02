@@ -5,6 +5,7 @@ import { Suspense, type ReactNode } from "react"
 import { CopyLink } from "@/components/copy-link"
 import { Leaderboard } from "@/components/leaderboard"
 import { Avatar, Gs, Meter, Panel } from "@/components/ui"
+import { XboxAmbient } from "@/components/xbox-ambient"
 import {
   formatGs,
   formatPct,
@@ -110,10 +111,11 @@ async function Overview({ session }: { session: XboxSession }) {
   const stats = tally(profile.games)
   const gamerscore = profile.gamerscore ?? stats.earned
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-line bg-card">
+    <section className="material light-strip relative overflow-hidden rounded-3xl border border-line">
+      {profile.color && <XboxAmbient color={profile.color} />}
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(640px 240px at 0% 0%, rgb(46 193 46 / 0.12), transparent 70%)" }}
+        style={{ background: "radial-gradient(640px 240px at 0% 0%, rgb(var(--ambient) / calc(0.18 * var(--glow))), transparent 70%)" }}
         aria-hidden
       />
       <div className="relative flex flex-wrap items-center justify-between gap-5 p-5 sm:p-7">
@@ -238,7 +240,7 @@ async function AlmostDone({ gamertag }: { gamertag: string }) {
                     </span>
                   </span>
                   <span className="mt-1.5 flex items-center gap-2">
-                    <Meter value={ratio(game)} className="flex-1" color="var(--xbox)" />
+                    <Meter value={ratio(game)} className="flex-1" />
                     <span className="w-8 text-right text-[11px] tabular-nums text-faint">{formatPct(ratio(game))}</span>
                   </span>
                 </span>
@@ -285,7 +287,7 @@ async function Friends({ session }: { session: XboxSession }) {
               <span className="text-foreground">{rival.gamertag}</span>
             </p>
           ) : (
-            <p className="border-b border-line px-4 py-2.5 text-xs text-xbox">You&apos;re top of your friends list.</p>
+            <p className="border-b border-line px-4 py-2.5 text-xs text-ambient">You&apos;re top of your friends list.</p>
           )}
           <ol className="scroll-thin max-h-[24rem] overflow-y-auto p-1.5">
             {board.map((row, index) => {
@@ -295,7 +297,7 @@ async function Friends({ session }: { session: XboxSession }) {
                   <Link
                     href={profileHref(row.gamertag)}
                     className={`flex items-center gap-3 rounded-xl px-2.5 py-2 transition-colors hover:bg-white/[0.03] ${
-                      me ? "bg-xbox/[0.07]" : ""
+                      me ? "ambient-row" : ""
                     }`}
                   >
                     <span className="w-5 text-right text-xs tabular-nums text-faint">{index + 1}</span>
@@ -303,7 +305,7 @@ async function Friends({ session }: { session: XboxSession }) {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
                         {row.gamertag}
-                        {me && <span className="ml-2 text-xs font-normal text-xbox">You</span>}
+                        {me && <span className="ml-2 text-xs font-normal text-ambient">You</span>}
                       </span>
                       {row.presence && <span className="block truncate text-xs text-faint">{row.presence}</span>}
                     </span>
@@ -387,11 +389,11 @@ function ratio(game: Game) {
 
 function Stat({ label, value, hint, meter }: { label: string; value: ReactNode; hint?: string; meter?: number }) {
   return (
-    <div className="bg-card px-5 py-4">
+    <div className="bg-[#0b0b0d] px-5 py-4">
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="mt-1 font-display text-2xl font-semibold tracking-[-0.02em] tabular-nums">{value}</dd>
       {hint && <p className="mt-0.5 text-xs text-faint">{hint}</p>}
-      {meter != null && <Meter value={meter} className="mt-2" color="var(--xbox)" />}
+      {meter != null && <Meter value={meter} className="mt-2" />}
     </div>
   )
 }

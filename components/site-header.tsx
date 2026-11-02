@@ -2,6 +2,7 @@ import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { Suspense } from "react"
+import { AmbientControl } from "@/components/ambient-control"
 import { SignInLink } from "@/components/xbox-setup"
 import { REFRESH_COOKIE, SESSION_COOKIE } from "@/lib/session"
 import { currentSession } from "@/lib/xbox"
@@ -24,7 +25,7 @@ async function signOut() {
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-background/70 backdrop-blur-xl backdrop-saturate-150">
+    <header className="light-strip light-strip-bottom sticky top-0 z-20 border-b border-line bg-background/70 backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
         <Link href="/" className="group flex shrink-0 items-center gap-2" aria-label="boxfiles home">
           <LogoMark />
@@ -32,7 +33,7 @@ export function SiteHeader() {
         </Link>
 
         <form action={lookupGamertag} className="ml-auto flex min-w-0 flex-1 justify-end sm:max-w-sm">
-          <label className="group relative flex h-9 w-full items-center rounded-full border border-line bg-card pl-3 pr-1 transition-[border-color,box-shadow] duration-200 focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(255_255_255/0.04)]">
+          <label className="group relative flex h-9 w-full items-center rounded-full border border-line bg-card pl-3 pr-1 transition-[border-color,box-shadow] duration-200 focus-within:border-ambient/50 focus-within:shadow-[0_0_18px_rgb(var(--ambient)/0.25)]">
             <SearchIcon />
             <span className="sr-only">Gamertag</span>
             <input
@@ -54,6 +55,7 @@ export function SiteHeader() {
           </label>
         </form>
 
+        <AmbientControl />
         <Suspense fallback={<span className="h-9 w-20 shrink-0" aria-hidden />}>
           <Account />
         </Suspense>

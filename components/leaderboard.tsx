@@ -49,7 +49,7 @@ export async function Leaderboard({ me }: { me?: string }) {
                   <Link
                     href={`/u/${encodeURIComponent(player.gamertag)}`}
                     className={`group grid ${columns} items-center gap-x-4 gap-y-2 px-4 py-3.5 transition-colors duration-150 hover:bg-white/[0.025] ${
-                      mine ? "bg-xbox/[0.06]" : ""
+                      mine ? "ambient-row" : ""
                     }`}
                   >
                     <span className={`text-sm tabular-nums ${index < 3 ? "text-foreground" : "text-faint"}`}>{index + 1}</span>
@@ -58,7 +58,7 @@ export async function Leaderboard({ me }: { me?: string }) {
                       <span className="min-w-0">
                         <span className="block truncate font-medium transition-colors group-hover:text-white">
                           {player.gamertag}
-                          {mine && <span className="ml-2 text-xs font-normal text-xbox">You</span>}
+                          {mine && <span className="ml-2 text-xs font-normal text-ambient">You</span>}
                         </span>
                         <span className="block truncate text-sm text-muted">
                           {player.games} {player.games === 1 ? "game" : "games"}

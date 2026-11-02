@@ -13,7 +13,7 @@ export function Panel({
   className?: string
 }) {
   return (
-    <section className={`overflow-hidden rounded-2xl border border-line bg-card ${className}`}>
+    <section className={`material light-strip relative overflow-hidden rounded-2xl border border-line ${className}`}>
       {title ? (
         <header className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2.5">
           <h2 className="mr-auto text-sm font-medium">{title}</h2>
@@ -57,13 +57,17 @@ export function Avatar({
   )
 }
 
+/** A progress bar lit in the ambient colors; pass `color` for a plain, unlit fill. */
 export function Meter({ value, className = "", color }: { value: number; className?: string; color?: string }) {
   const pct = Math.max(0, Math.min(100, value * 100))
   return (
-    <span className={`block h-1 overflow-hidden rounded-full bg-white/[0.07] ${className}`}>
+    <span className={`block h-1 rounded-full bg-white/[0.07] ${className}`}>
       <span
-        className="block h-full rounded-full transition-[width] duration-700 ease-out"
-        style={{ width: `${pct}%`, background: color ?? "var(--foreground)" }}
+        className={`block h-full rounded-full transition-[width,background] duration-700 ease-out ${color ? "" : "ambient-glow"}`}
+        style={{
+          width: `${pct}%`,
+          background: color ?? "linear-gradient(90deg, rgb(var(--ambient)), rgb(var(--ambient-2)))",
+        }}
       />
     </span>
   )

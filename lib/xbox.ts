@@ -156,6 +156,7 @@ async function profileFor(session: XboxSession, xuid: string, known: Found | nul
     gamePass: person.gamePass,
     followers: person.followers,
     following: person.following,
+    color: person.color,
   }
 }
 

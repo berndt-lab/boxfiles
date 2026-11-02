@@ -7,17 +7,14 @@ const features = [
   {
     title: "Up next",
     body: "Locked achievements most players already have, pulled from the games you're closest to finishing. Your easiest gamerscore, in order.",
-    accent: "#5ee08a",
   },
   {
     title: "Friends rivalry",
     body: "You and your Xbox friends, ranked by gamerscore, with exactly how much you need to pass the next one.",
-    accent: "#62c0ff",
   },
   {
     title: "A profile worth sharing",
     body: "Every game, every unlock, and how rare it is. One link with a preview card for Discord, Reddit, or X.",
-    accent: "#f5c542",
   },
 ]
 
@@ -27,7 +24,7 @@ export function Landing({ notice }: { notice?: ReactNode }) {
   return (
     <main className="mx-auto max-w-6xl px-4 pb-10 pt-14 sm:pt-20">
       <p className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1 text-xs text-muted">
-        <span className="size-1.5 rounded-full bg-xbox shadow-[0_0_6px_var(--xbox)]" aria-hidden />
+        <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
         Alpha · free for Xbox players
       </p>
       <h1 className="mt-5 max-w-3xl text-balance font-display text-4xl font-semibold tracking-[-0.03em] sm:text-6xl">
@@ -56,10 +53,10 @@ export function Landing({ notice }: { notice?: ReactNode }) {
 
       <ul className="mt-14 grid gap-4 sm:grid-cols-3">
         {features.map((feature) => (
-          <li key={feature.title} className="relative overflow-hidden rounded-2xl border border-line bg-card p-5">
+          <li key={feature.title} className="material light-strip relative overflow-hidden rounded-2xl border border-line p-5">
             <div
               className="pointer-events-none absolute inset-0"
-              style={{ background: `radial-gradient(280px 120px at 0% 0%, ${feature.accent}1f, transparent 70%)` }}
+              style={{ background: "radial-gradient(280px 120px at 0% 0%, rgb(var(--ambient) / calc(0.14 * var(--glow))), transparent 70%)" }}
               aria-hidden
             />
             <h2 className="relative font-medium">{feature.title}</h2>

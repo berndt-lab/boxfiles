@@ -18,6 +18,8 @@ export type XboxPerson = {
   gamePass?: boolean
   followers?: number
   following?: number
+  /** The player's Xbox profile color, as #rrggbb. */
+  color?: string
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -91,7 +93,13 @@ function mapPerson(value: unknown): XboxPerson | null {
     gamePass: detail?.hasGamePass === true,
     followers: detail && "followerCount" in detail ? num(detail.followerCount) : undefined,
     following: detail && "followingCount" in detail ? num(detail.followingCount) : undefined,
+    color: hexColor(record(person.preferredColor)?.primaryColor),
   }
+}
+
+function hexColor(value: unknown) {
+  const hex = text(value).replace(/^#/, "")
+  return /^[0-9a-f]{6}$/i.test(hex) ? `#${hex.toLowerCase()}` : undefined
 }
 
 function mapProfileUser(value: unknown): XboxPerson | null {

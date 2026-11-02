@@ -50,6 +50,8 @@ export type Profile = {
   gamePass?: boolean
   followers?: number
   following?: number
+  /** Xbox profile color, as #rrggbb. */
+  color?: string
 }
 
 export type RarityTone = "ultra" | "very" | "rare" | "uncommon" | "common"

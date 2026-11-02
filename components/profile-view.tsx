@@ -13,7 +13,6 @@ import {
   rarityColor,
   rarityTier,
   tally,
-  tileHue,
   words,
   type Achievement,
   type Game,
@@ -98,17 +97,16 @@ export function ProfileView({
       }
       return a.rarity - b.rarity
     })
-  const hue = tileHue(profile.gamertag)
 
   return (
     <MotionConfig reducedMotion="user">
       <main className="mx-auto max-w-6xl px-4 pb-10 pt-8 sm:pt-12">
         {/* Profile header */}
-        <section className="relative overflow-hidden rounded-3xl border border-line bg-card">
+        <section className="material light-strip relative overflow-hidden rounded-3xl border border-line">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
-              background: `radial-gradient(640px 220px at 0% 0%, hsl(${hue} 45% 40% / 0.16), transparent 70%)`,
+              background: "radial-gradient(640px 220px at 0% 0%, rgb(var(--ambient) / calc(0.18 * var(--glow))), transparent 70%)",
             }}
             aria-hidden
           />
@@ -186,7 +184,7 @@ export function ProfileView({
                 />
               )}
 
-              <section className="overflow-hidden rounded-2xl border border-line bg-card">
+              <section className="material light-strip relative overflow-hidden rounded-2xl border border-line">
                 <header className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line px-4 py-3.5">
                   <div className="mr-auto min-w-0">
                     <h2 className="truncate font-display text-xl font-semibold tracking-[-0.02em]">{game.title}</h2>
@@ -255,7 +253,7 @@ function GameRow({ game, selected, onSelect }: { game: Game; selected: boolean; 
         {selected && (
           <motion.span
             layoutId="game-active"
-            className="absolute inset-0 rounded-xl bg-raised ring-1 ring-line-strong"
+            className="ambient-row absolute inset-0 rounded-xl ring-1 ring-line-strong"
             transition={spring}
             aria-hidden
           />
@@ -268,7 +266,7 @@ function GameRow({ game, selected, onSelect }: { game: Game; selected: boolean; 
             {game.title}
           </span>
           <span className="mt-1.5 flex items-center gap-2">
-            <Meter value={stats.completion} className="flex-1" color={selected ? "var(--foreground)" : "var(--muted)"} />
+            <Meter value={stats.completion} className="flex-1" color={selected ? undefined : "var(--muted)"} />
             <span className="w-8 text-right text-[11px] tabular-nums text-faint">{formatPct(stats.completion)}</span>
           </span>
         </span>
