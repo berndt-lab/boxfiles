@@ -20,6 +20,7 @@ export const metadata: Metadata = {
     template: "%s · xboxprofiles",
   },
   description: "Show off Xbox achievements, gamerscore, and rare unlocks.",
+  robots: { index: false, follow: false },
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

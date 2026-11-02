@@ -59,6 +59,10 @@ async function xboxGet(session: XboxSession, url: string, contract: string): Pro
   throw new XboxError(`Xbox lookup failed (${response.status}).`)
 }
 
+function expired(error: unknown) {
+  return error instanceof XboxError && error.message.includes("expired")
+}
+
 /** Peoplehub has presence and followers; profile settings is the plainer fallback. */
 async function personByXuid(session: XboxSession, xuid: string): Promise<XboxPerson | null> {
   const id = encodeURIComponent(xuid)
@@ -66,36 +70,49 @@ async function personByXuid(session: XboxSession, xuid: string): Promise<XboxPer
     const rich = peopleFrom(await xboxGet(session, `${PEOPLE}/xuids(${id})/decoration/${PEOPLE_DECORATION}`, "5"))
     if (rich[0]) return rich[0]
   } catch (error) {
-    if (error instanceof XboxError && error.message.includes("expired")) throw error
+    if (expired(error)) throw error
   }
   return peopleFrom(await xboxGet(session, `${PROFILE}/xuid(${id})/profile/settings?settings=${SETTINGS}`, "3"))[0] ?? null
 }
 
-async function personByTag(session: XboxSession, tag: string): Promise<XboxPerson | null> {
-  try {
-    const found = pickPerson(
-      peopleFrom(
-        await xboxGet(session, `${PEOPLE}/search/decoration/${PEOPLE_DECORATION}?q=${encodeURIComponent(tag)}&maxItems=25`, "5"),
-      ),
-      tag,
-    )
-    if (found) return found
-  } catch (error) {
-    if (error instanceof XboxError && error.message.includes("expired")) throw error
+type Found = { person: XboxPerson; rich: boolean }
+
+/** Search and the exact-gamertag lookup run together; a search hit wins because it carries more detail. */
+async function personByTag(session: XboxSession, tag: string): Promise<Found | null> {
+  const [search, exact] = await Promise.allSettled([
+    xboxGet(session, `${PEOPLE}/search/decoration/${PEOPLE_DECORATION}?q=${encodeURIComponent(tag)}&maxItems=25`, "5"),
+    xboxGet(session, `${PROFILE}/gt(${encodeURIComponent(tag)})/profile/settings?settings=${SETTINGS}`, "3"),
+  ])
+  const hit = search.status === "fulfilled" ? pickPerson(peopleFrom(search.value), tag) : null
+  if (hit) return { person: hit, rich: true }
+  const match = exact.status === "fulfilled" ? pickPerson(peopleFrom(exact.value), tag) : null
+  if (match) return { person: match, rich: false }
+  for (const result of [search, exact]) {
+    if (result.status === "rejected" && expired(result.reason)) throw result.reason
   }
-  const exact = pickPerson(
-    peopleFrom(await xboxGet(session, `${PROFILE}/gt(${encodeURIComponent(tag)})/profile/settings?settings=${SETTINGS}`, "3")),
-    tag,
-  )
-  return exact ? ((await personByXuid(session, exact.xuid)) ?? exact) : null
+  if (exact.status === "rejected") throw exact.reason
+  return null
 }
 
-async function profileFromPerson(session: XboxSession, person: XboxPerson): Promise<Profile> {
-  const titles = await xboxGet(
-    session,
-    `${TITLES}/xuid(${encodeURIComponent(person.xuid)})/titles/titlehistory/decoration/achievement,image?maxItems=500`,
-    "2",
-  )
+/** Profile details and title history only need the xuid, so they load side by side. */
+async function profileFor(session: XboxSession, xuid: string, known: Found | null): Promise<Profile | null> {
+  const details = known?.rich
+    ? Promise.resolve(known.person)
+    : personByXuid(session, xuid)
+        .then((person) => person ?? known?.person ?? null)
+        .catch((error: unknown) => {
+          if (known && !expired(error)) return known.person
+          throw error
+        })
+  const [person, titles] = await Promise.all([
+    details,
+    xboxGet(
+      session,
+      `${TITLES}/xuid(${encodeURIComponent(xuid)})/titles/titlehistory/decoration/achievement,image?maxItems=500`,
+      "2",
+    ),
+  ])
+  if (!person) return null
   return {
     gamertag: person.gamertag,
     bio: person.bio,
@@ -120,15 +137,14 @@ async function profileFromPerson(session: XboxSession, person: XboxPerson): Prom
 
 export async function lookupMyProfile(): Promise<Profile | null> {
   const session = await requireSession()
-  const person = await personByXuid(session, session.xuid)
-  return person ? profileFromPerson(session, person) : null
+  return profileFor(session, session.xuid, null)
 }
 
 export async function lookupXboxProfile(tag: string): Promise<Profile | null> {
   const session = await requireSession()
-  const mine = tag.trim().toLowerCase() === session.gamertag.toLowerCase()
-  const person = mine ? await personByXuid(session, session.xuid) : await personByTag(session, tag)
-  return person ? profileFromPerson(session, person) : null
+  if (tag.trim().toLowerCase() === session.gamertag.toLowerCase()) return profileFor(session, session.xuid, null)
+  const found = await personByTag(session, tag)
+  return found ? profileFor(session, found.person.xuid, found) : null
 }
 
 export async function lookupAchievements(xuid: string, titleId: string): Promise<Achievement[]> {

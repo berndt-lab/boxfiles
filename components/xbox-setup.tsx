@@ -1,3 +1,4 @@
+import { leaderboardReady } from "@/lib/leaderboard"
 import { authConfigured } from "@/lib/xbox-auth"
 
 export function XboxSetup() {
@@ -49,6 +50,11 @@ function SignInCard() {
       <div className="min-w-0">
         <h2 className="font-medium">Sign in with Xbox</h2>
         <p className="mt-1 text-sm text-muted">See your own gamerscore and look up any gamertag with live data.</p>
+        {leaderboardReady() && (
+          <p className="mt-2 text-xs text-faint">
+            Signing in puts your gamertag and gamerscore on the public leaderboard. You can leave it anytime.
+          </p>
+        )}
       </div>
       <SignInLink />
     </section>

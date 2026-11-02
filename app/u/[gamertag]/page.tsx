@@ -1,10 +1,12 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { after } from "next/server"
 import { Suspense } from "react"
 import { ProfileView } from "@/components/profile-view"
 import { Avatar } from "@/components/ui"
 import { XboxSetup } from "@/components/xbox-setup"
 import { formatGs, tally, type Profile } from "@/lib/format"
+import { entryFromProfile, saveEntry } from "@/lib/leaderboard"
 import { displayTag, findProfile, listProfiles } from "@/lib/profile"
 import { XboxError, currentSession, lookupXboxProfile } from "@/lib/xbox"
 
@@ -39,7 +41,8 @@ async function ProfilePage({ params }: GamertagPage) {
   if (sample) return <ProfileView key={sample.gamertag} profile={sample} />
 
   const label = displayTag(gamertag) || "that gamertag"
-  if (!(await currentSession())) {
+  const session = await currentSession()
+  if (!session) {
     return (
       <Notice title={<>No sample profile for “{label}”</>} body="Sign in with Xbox to look up real gamertags, or open one of the sample players.">
         <div className="mt-6">
@@ -69,6 +72,11 @@ async function ProfilePage({ params }: GamertagPage) {
         <SampleLinks />
       </Notice>
     )
+  }
+  const entry = profile.xuid === session.xuid ? entryFromProfile(profile) : null
+  if (entry) {
+    // Viewing your own profile keeps your leaderboard row current.
+    after(() => saveEntry(entry).catch(() => {}))
   }
   return <ProfileView key={profile.gamertag} profile={profile} />
 }
