@@ -1,4 +1,5 @@
 import { cookies } from "next/headers"
+import { connection } from "next/server"
 import { completionTier, type Achievement, type Game, type Profile } from "@/lib/format"
 import { SESSION_COOKIE, unseal, type XboxSession } from "@/lib/session"
 import {
@@ -6,7 +7,6 @@ import {
   gamesFrom,
   peopleFrom,
   pickPerson,
-  recentUnlocksFrom,
   type RecentUnlock,
   type XboxPerson,
 } from "@/lib/xbox-map"
@@ -39,6 +39,8 @@ export class XboxError extends Error {
 /** The signed-in Xbox account, or null. Reads cookies, so callers sit behind Suspense. */
 export async function currentSession(): Promise<XboxSession | null> {
   const session = unseal<XboxSession>((await cookies()).get(SESSION_COOKIE)?.value)
+  // Comparing against the clock only makes sense per request, so tell Next.js not to prerender past this point.
+  await connection()
   return session && session.expiresAt > Date.now() ? session : null
 }
 
@@ -118,6 +120,10 @@ async function personByTag(session: XboxSession, tag: string): Promise<Found | n
   return null
 }
 
+function titlesUrl(xuid: string) {
+  return `${TITLES}/xuid(${encodeURIComponent(xuid)})/titles/titlehistory/decoration/achievement,image?maxItems=500`
+}
+
 /** Profile details and title history only need the xuid, so they load side by side. */
 async function profileFor(session: XboxSession, xuid: string, known: Found | null): Promise<Profile | null> {
   const details = known?.rich
@@ -130,11 +136,7 @@ async function profileFor(session: XboxSession, xuid: string, known: Found | nul
         })
   const [person, titles] = await Promise.all([
     details,
-    xboxGet(
-      session,
-      `${TITLES}/xuid(${encodeURIComponent(xuid)})/titles/titlehistory/decoration/achievement,image?maxItems=500`,
-      "2",
-    ),
+    xboxGet(session, titlesUrl(xuid), "2"),
   ])
   if (!person) return null
   return {
@@ -228,23 +230,33 @@ export async function lookupRecentUnlocks(limit = 8): Promise<RecentUnlock[]> {
   return unlocksFor(session, session.xuid, limit)
 }
 
-/** A player's latest unlocks across every game, newest first: up to 1,000, enough to find their rarest. */
+/** A player's unlocks across their most recent and most-played games, newest first. */
 export async function lookupUnlocks(xuid: string): Promise<RecentUnlock[]> {
   if (!/^\d+$/.test(xuid)) throw new XboxError("Bad Xbox id.")
   return unlocksFor(await requireSession(), xuid, 1000)
 }
 
+const FEED_GAMES = 12
+
+// The cross-game achievements query comes back empty, so the feed is built from per-game lists instead: the most
+// recently played games plus the ones with the most gamerscore, which is where the latest and rarest unlocks live.
 async function unlocksFor(session: XboxSession, xuid: string, limit: number) {
-  const url = `${ACHIEVEMENTS}/xuid(${xuid})/achievements?unlockedOnly=true&orderBy=unlockTime&maxItems=${limit}`
-  // Contract 3 may add rarity; contract 2 is the fallback when it's refused or comes back empty.
-  let unlocks: RecentUnlock[] = []
-  try {
-    unlocks = recentUnlocksFrom(await xboxGet(session, url, "3"))
-  } catch (error) {
-    if (expired(error)) throw error
+  const games = gamesFrom(await xboxGet(session, titlesUrl(xuid), "2")).filter((game) => (game.earned ?? 0) > 0)
+  const recent = [...games].sort((a, b) => (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? "")).slice(0, FEED_GAMES / 2)
+  const biggest = [...games].sort((a, b) => (b.earned ?? 0) - (a.earned ?? 0))
+  const picked = [...new Map([...recent, ...biggest].map((game) => [game.id, game])).values()].slice(0, FEED_GAMES)
+  const lists = await Promise.allSettled(picked.map((game) => achievementsFor(session, xuid, game.id)))
+  const unlocks = lists.flatMap((result, index) =>
+    result.status === "fulfilled"
+      ? result.value
+          .filter((achievement) => achievement.unlockedAt)
+          .map((achievement) => ({ achievement, game: picked[index].title, titleId: picked[index].id }))
+      : [],
+  )
+  if (unlocks.length === 0 && lists.some((result) => result.status === "rejected")) {
+    const failed = lists.find((result) => result.status === "rejected")
+    if (failed?.status === "rejected" && expired(failed.reason)) throw failed.reason
   }
-  if (unlocks.length === 0) unlocks = recentUnlocksFrom(await xboxGet(session, url, "2"))
-  // Newest first, whether or not the service honored orderBy.
   return unlocks
     .sort((a, b) => (b.achievement.unlockedAt ?? "").localeCompare(a.achievement.unlockedAt ?? ""))
     .slice(0, limit)
@@ -256,18 +268,19 @@ async function unlocksFor(session: XboxSession, xuid: string, limit: number) {
  */
 export async function inspectAchievements(titleId?: string) {
   const session = await requireSession()
-  const id =
-    titleId && /^\d+$/.test(titleId)
-      ? titleId
-      : gamesFrom(
-          await xboxFetch(session, `${TITLES}/xuid(${session.xuid})/titles/titlehistory/decoration/achievement?maxItems=20`, "2"),
-        ).find((game) => (game.earned ?? 0) > 0)?.id
+  const games = gamesFrom(await xboxFetch(session, titlesUrl(session.xuid), "2"))
+    .filter((game) => (game.earned ?? 0) > 0)
+    .sort((a, b) => (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? ""))
+  const id = titleId && /^\d+$/.test(titleId) ? titleId : games[0]?.id
+  const ids = games.slice(0, 2).map((game) => game.id)
   const base = `${ACHIEVEMENTS}/xuid(${session.xuid})/achievements`
-  const requests = {
+  const requests: Record<string, string> = {
     game: `${base}?titleId=${id}&maxItems=3`,
     feed: `${base}?unlockedOnly=true&orderBy=unlockTime&maxItems=3`,
+    "feed UnlockTime": `${base}?unlockedOnly=true&orderBy=UnlockTime&maxItems=3`,
+    "feed two titles": `${base}?titleId=${ids.join(",")}&unlockedOnly=true&maxItems=3`,
   }
-  const report: Record<string, unknown> = { titleId: id }
+  const report: Record<string, unknown> = { titleId: id ?? null, gamesWithScore: games.length }
   for (const [name, url] of Object.entries(requests)) {
     for (const contract of ["2", "3", "4"]) {
       try {

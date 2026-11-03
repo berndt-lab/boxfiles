@@ -29,7 +29,7 @@ export type LeaderboardEntry = {
   games: number
   /** Games at 100%. */
   completed?: number
-  /** Gamerscore weighted by rarity across the latest 1,000 unlocks. */
+  /** Gamerscore weighted by rarity across the player's recent and biggest games. */
   difficulty?: number
   /** Unlocks under 5% of players, within those same unlocks. */
   ultra?: number
