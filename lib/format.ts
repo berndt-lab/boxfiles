@@ -13,6 +13,8 @@ export type Achievement = {
   /** Challenge, when the achievement is time-limited. */
   kind?: string
   estimate?: string
+  /** The store product the achievement belongs to; DLC achievements carry their add-on's product. */
+  product?: string
 }
 
 export type Game = {
@@ -184,4 +186,26 @@ export function tileHue(title: string) {
   let hue = 0
   for (const char of title) hue = (hue * 33 + char.charCodeAt(0)) % 360
   return hue
+}
+
+/** Every achievement in the game unlocked, judged from the title summary. */
+export function isCompleted(game: { earned?: number; total?: number }) {
+  return (game.total ?? 0) > 0 && (game.earned ?? 0) >= (game.total ?? 0)
+}
+
+/**
+ * "complete" when every achievement is unlocked; "base" when the main game is done but add-on achievements remain.
+ * The main game is the product with the most achievements. Without product data there is no base/DLC split.
+ */
+export function completionTier(achievements: Array<{ unlockedAt: string | null; product?: string }>): "complete" | "base" | null {
+  if (achievements.length === 0) return null
+  if (achievements.every((achievement) => achievement.unlockedAt)) return "complete"
+  const sizes = new Map<string, number>()
+  for (const achievement of achievements) {
+    if (achievement.product) sizes.set(achievement.product, (sizes.get(achievement.product) ?? 0) + 1)
+  }
+  if (sizes.size < 2) return null
+  const base = [...sizes].sort((a, b) => b[1] - a[1])[0][0]
+  const mainDone = achievements.every((achievement) => achievement.product !== base || achievement.unlockedAt)
+  return mainDone ? "base" : null
 }

@@ -323,7 +323,7 @@ async function Friends({ session }: { session: XboxSession }) {
           ) : (
             <p className="border-b border-line px-4 py-2.5 text-xs text-ambient">You&apos;re top of your friends list.</p>
           )}
-          <ol className="scroll-thin max-h-[24rem] overflow-y-auto p-1.5">
+          <ol className="scroll-thin p-1.5 lg:max-h-[24rem] lg:overflow-y-auto">
             {board.map((row, index) => {
               const me = row.xuid === session.xuid
               return (

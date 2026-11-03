@@ -211,6 +211,7 @@ export function mapAchievement(value: unknown, titleId: string): Achievement | n
   const platforms = texts(raw.platforms)
   const kind = text(raw.achievementType)
   const estimate = formatDuration(text(raw.estimatedTime))
+  const product = text(raw.productId)
   return {
     id: `${titleId}:${sourceId}`,
     name,
@@ -223,6 +224,7 @@ export function mapAchievement(value: unknown, titleId: string): Achievement | n
     progress: progressLabel(raw.progression),
     kind: kind === "Challenge" ? "Challenge" : undefined,
     estimate: estimate || undefined,
+    product: product && !/^[0-]+$/.test(product) ? product.toLowerCase() : undefined,
   }
 }
 

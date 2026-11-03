@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { AmbientOrb } from "@/components/ambient-orb"
 import { Leaderboard } from "@/components/leaderboard"
 import { Reveal, RevealLines } from "@/components/motion"
 import { Marquee, SectionHead } from "@/components/ui"
@@ -50,8 +51,11 @@ export function Landing({ notice }: { notice?: ReactNode }) {
   const ready = authConfigured()
   return (
     <main>
-      <section className="shell pt-8 sm:pt-12">
-        <div className="label-mono flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
+      <section className="shell relative pt-8 sm:pt-12">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+          <AmbientOrb className="right-[-18%] top-16 size-[78vw] opacity-60 sm:right-[-4%] sm:top-10 sm:size-[min(46vw,600px)] sm:opacity-90" />
+        </div>
+        <div className="label-mono relative flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
           <span className="flex items-center gap-2">
             <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
             <span className="normal-case">(α)</span> Alpha release
@@ -60,7 +64,7 @@ export function Landing({ notice }: { notice?: ReactNode }) {
           <span>Free · Read-only</span>
         </div>
 
-        <h1 className="display-em mt-8 font-display text-[clamp(3.25rem,12.6vw,12.5rem)] font-semibold leading-[0.86] tracking-[-0.06em] sm:mt-12">
+        <h1 className="display-em relative mt-8 font-display text-[clamp(3.25rem,12.6vw,12.5rem)] font-semibold leading-[0.86] tracking-[-0.06em] sm:mt-12">
           <RevealLines
             lines={[
               "Your next",
@@ -76,7 +80,7 @@ export function Landing({ notice }: { notice?: ReactNode }) {
 
         {notice}
 
-        <div className="mt-10 grid gap-8 border-t border-line pt-8 sm:mt-14 sm:grid-cols-12">
+        <div className="relative mt-10 grid gap-8 border-t border-line pt-8 sm:mt-14 sm:grid-cols-12">
           <Reveal className="sm:col-span-5" delay={0.35}>
             <p className="text-pretty text-lg leading-relaxed text-muted sm:text-xl">
               boxfiles reads your Xbox achievements and shows the easiest ones left to unlock, how you stack up against

@@ -62,18 +62,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   )
 }
 
-/** Hairline column guides behind everything, aligned to the page column like a layout grid left visible. */
+/** A fine square grid behind the top of every page, fading out toward the edges and as you scroll down. */
 function PageGrid() {
-  return (
-    <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
-      <div className="shell grid h-full grid-cols-2 sm:grid-cols-4">
-        {[0, 1, 2, 3].map((column) => (
-          <span
-            key={column}
-            className={`border-l border-white/[0.035] ${column === 1 ? "border-r sm:border-r-0" : ""} ${column > 1 ? "hidden sm:block" : ""} ${column === 3 ? "sm:border-r" : ""}`}
-          />
-        ))}
-      </div>
-    </div>
-  )
+  return <div className="square-grid pointer-events-none fixed inset-x-0 top-0 z-0 h-[560px]" aria-hidden />
 }

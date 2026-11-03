@@ -1,5 +1,7 @@
 import assert from "node:assert/strict"
 import {
+  completionTier,
+  isCompleted,
   formatRarity,
   formatUnlocked,
   gameTally,
@@ -83,4 +85,14 @@ assert.equal(initials("NovaForge"), "NF")
 assert.equal(words("XboxOne"), "Xbox One")
 assert.equal(words("GoodPlayer"), "Good Player")
 
+console.log("ok")
+
+const base = (unlockedAt: string | null, product?: string) => ({ unlockedAt, product })
+assert.equal(completionTier([]), null)
+assert.equal(completionTier([base("2026-01-01", "a"), base("2026-01-02", "b")]), "complete")
+assert.equal(completionTier([base("x", "a"), base("x", "a"), base(null, "b")]), "base")
+assert.equal(completionTier([base("x", "a"), base(null, "a"), base("x", "b")]), null)
+assert.equal(completionTier([base("x"), base(null)]), null)
+assert.equal(isCompleted({ earned: 1000, total: 1000 }), true)
+assert.equal(isCompleted({ earned: 0, total: 0 }), false)
 console.log("ok")

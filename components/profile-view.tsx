@@ -1,61 +1,102 @@
 "use client"
 
 import { AnimatePresence, MotionConfig, motion } from "motion/react"
-import { useEffect, useState } from "react"
+import { Suspense, use, useEffect, useState, useSyncExternalStore } from "react"
+import { createPortal } from "react-dom"
 import { CopyLink } from "@/components/copy-link"
-import { Avatar, Gs, Meter, Panel } from "@/components/ui"
+import { SocialLinks } from "@/components/social-links"
+import { SocialsEditor } from "@/components/socials-editor"
+import { Avatar, Gs, Meter } from "@/components/ui"
 import {
+  completionTier,
   formatGs,
   formatPct,
   formatRarity,
   formatUnlocked,
   gameTally,
+  isCompleted,
   rarityColor,
   rarityTier,
-  tally,
   words,
   type Achievement,
   type Game,
   type Profile,
   type RarityTone,
 } from "@/lib/format"
+import type { Socials } from "@/lib/socials"
+import type { RecentUnlock } from "@/lib/xbox-map"
 
 export type Filter = "all" | "unlocked" | "locked"
 type Sort = "rarity" | "score" | "recent"
+type Tier = "complete" | "base" | null
+type GameFilter = "all" | "complete" | "base" | "progress"
+type GameSort = "recent" | "completion" | "score" | "name"
 
 const spring = { type: "spring", stiffness: 420, damping: 34, mass: 0.7 } as const
+const ease = [0.22, 1, 0.36, 1] as const
+const PAGE = 48
+const GOLD = "#f5c542"
+const MYTHIC = "#c084fc"
 
-function firstGameId(profile: Profile) {
-  const rarest = tally(profile.games).rarest
-  if (!rarest) return profile.games[0]?.id ?? ""
-  return profile.games.find((game) => game.title === rarest.game)?.id ?? profile.games[0]?.id ?? ""
+function ratio(game: Game) {
+  return game.total ? (game.earned ?? 0) / game.total : 0
 }
 
 export function ProfileView({
   profile,
   initialGame,
   initialFilter = "unlocked",
+  unlocks,
+  views = null,
+  rank = null,
+  socials = {},
+  canEditSocials = false,
 }: {
   profile: Profile
   initialGame?: string
   initialFilter?: Filter
+  unlocks?: Promise<RecentUnlock[] | null>
+  views?: number | null
+  rank?: { rank: number; total: number } | null
+  socials?: Socials
+  canEditSocials?: boolean
 }) {
   const [games, setGames] = useState(profile.games)
-  const [gameId, setGameId] = useState(() =>
-    initialGame && profile.games.some((game) => game.id === initialGame) ? initialGame : firstGameId(profile),
+  const [openId, setOpenId] = useState<string | null>(() =>
+    initialGame && profile.games.some((game) => game.id === initialGame) ? initialGame : null,
   )
   const [filter, setFilter] = useState<Filter>(initialFilter)
   const [sort, setSort] = useState<Sort>("rarity")
   const [loadError, setLoadError] = useState<string | null>(null)
-  const stats = tally(games)
-  const game = games.find((item) => item.id === gameId) ?? games[0]
-  const selectedId = game?.id
-  const loaded = game?.achievementsLoaded === true
-  const headline = profile.gamerscore ?? stats.earned
+  const [baseDone, setBaseDone] = useState<ReadonlySet<string>>(() => new Set())
+  const open = games.find((game) => game.id === openId) ?? null
+  const loaded = open?.achievementsLoaded === true
+
+  // Only a game's full achievement list says whether its main game is done, so check the likeliest candidates.
+  useEffect(() => {
+    if (!profile.xuid) return
+    const candidates = profile.games
+      .filter((game) => !isCompleted(game) && ratio(game) >= 0.3)
+      .sort((a, b) => (b.earned ?? 0) - (a.earned ?? 0))
+      .slice(0, 12)
+      .map((game) => game.id)
+    if (candidates.length === 0) return
+    let cancel = false
+    fetch(`/api/base-games?xuid=${encodeURIComponent(profile.xuid)}&titleIds=${candidates.join(",")}`)
+      .then((response) => (response.ok ? (response.json() as Promise<{ titleIds?: string[] }>) : { titleIds: [] }))
+      .then((body) => {
+        if (cancel || !body.titleIds?.length) return
+        setBaseDone((current) => new Set([...current, ...(body.titleIds ?? [])]))
+      })
+      .catch(() => {})
+    return () => {
+      cancel = true
+    }
+  }, [profile.xuid, profile.games])
 
   useEffect(() => {
-    if (!profile.xuid || !selectedId || loaded) return
-    const titleId = selectedId
+    if (!profile.xuid || !openId || loaded) return
+    const titleId = openId
     let cancel = false
     fetch(`/api/achievements?xuid=${encodeURIComponent(profile.xuid)}&titleId=${encodeURIComponent(titleId)}`)
       .then(async (response) => {
@@ -69,20 +110,530 @@ export function ProfileView({
         setGames((current) =>
           current.map((item) => (item.id === titleId ? { ...item, achievements, achievementsLoaded: true } : item)),
         )
+        if (completionTier(achievements) === "base") setBaseDone((current) => new Set([...current, titleId]))
       })
       .catch((error: unknown) => {
         if (cancel) return
         setLoadError(error instanceof Error ? error.message : "Could not load achievements.")
-        setGames((current) =>
-          current.map((item) => (item.id === titleId ? { ...item, achievementsLoaded: true } : item)),
-        )
+        setGames((current) => current.map((item) => (item.id === titleId ? { ...item, achievementsLoaded: true } : item)))
       })
     return () => {
       cancel = true
     }
-  }, [loaded, profile.xuid, selectedId])
-  const gameStats = game ? gameTally(game) : null
-  const shown = (game?.achievements ?? [])
+  }, [loaded, profile.xuid, openId])
+
+  const tierOf = (game: Game): Tier => (isCompleted(game) ? "complete" : baseDone.has(game.id) ? "base" : null)
+
+  function openGame(id: string) {
+    setOpenId(id)
+    setFilter("unlocked")
+    setLoadError(null)
+    const url = new URL(window.location.href)
+    url.searchParams.set("game", id)
+    url.searchParams.delete("show")
+    window.history.replaceState(null, "", url)
+  }
+
+  function closeGame() {
+    setOpenId(null)
+    const url = new URL(window.location.href)
+    url.searchParams.delete("game")
+    url.searchParams.delete("show")
+    window.history.replaceState(null, "", url)
+  }
+
+  const headline = profile.gamerscore ?? games.reduce((sum, game) => sum + (game.earned ?? 0), 0)
+  const possible = games.reduce((sum, game) => sum + (game.total ?? 0), 0)
+
+  return (
+    <MotionConfig reducedMotion="user">
+      <main className="shell pt-8 sm:pt-12">
+        <section>
+          <div className="label-mono flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
+            <span className="flex items-center gap-2">
+              <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
+              (Profile) Xbox Live
+            </span>
+            <CopyLink />
+          </div>
+          <div className="mt-8 grid items-end gap-8 sm:mt-12 lg:grid-cols-12">
+            <div className="flex min-w-0 items-start gap-4 sm:gap-6 lg:col-span-7">
+              <span className="mt-1 shrink-0 sm:mt-2">
+                <Avatar name={profile.gamertag} src={profile.avatar} size="xl" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
+                  {profile.gamertag}
+                </h1>
+                {profile.bio ? <p className="mt-3 max-w-xl text-pretty text-muted">{profile.bio}</p> : null}
+                <ProfileFacts profile={profile} />
+                <SocialLinks socials={socials} className="mt-3" />
+                {canEditSocials && <SocialsEditor socials={socials} />}
+              </div>
+            </div>
+            <div className="lg:col-span-5 lg:text-right">
+              <p className="label-mono text-muted">Gamerscore</p>
+              <p
+                className="mt-2 font-display text-[clamp(3.5rem,9vw,8rem)] font-semibold leading-[0.82] tracking-[-0.06em] tabular-nums"
+                title="Gamerscore"
+              >
+                {formatGs(headline)}
+                <span className="ambient-text ml-[0.04em] align-top text-[0.34em] tracking-normal">G</span>
+              </p>
+              {possible > 0 && <p className="label-mono mt-3 text-faint">of {formatGs(possible)} possible</p>}
+            </div>
+          </div>
+          <StatsStrip games={games} baseCount={baseDone.size} views={views} rank={rank} />
+        </section>
+
+        {unlocks && (
+          <Suspense fallback={<HighlightSkeleton />}>
+            <Highlights unlocks={unlocks} games={games} onOpen={openGame} />
+          </Suspense>
+        )}
+
+        <GamesSection games={games} tierOf={tierOf} onOpen={openGame} />
+
+        <AnimatePresence>
+          {open && (
+            <GameDrawer
+              key={open.id}
+              game={open}
+              tier={tierOf(open)}
+              loading={Boolean(profile.xuid) && !loaded}
+              loadError={loadError}
+              filter={filter}
+              onFilter={setFilter}
+              sort={sort}
+              onSort={setSort}
+              onClose={closeGame}
+            />
+          )}
+        </AnimatePresence>
+      </main>
+    </MotionConfig>
+  )
+}
+
+/** The scoreboard row: big numbers with small labels, in the spirit of a trophy profile header. */
+function StatsStrip({
+  games,
+  baseCount,
+  views,
+  rank,
+}: {
+  games: Game[]
+  baseCount: number
+  views: number | null
+  rank: { rank: number; total: number } | null
+}) {
+  const withAchievements = games.filter((game) => (game.total ?? 0) > 0)
+  const completed = games.filter(isCompleted).length
+  const average = withAchievements.length
+    ? withAchievements.reduce((sum, game) => sum + ratio(game), 0) / withAchievements.length
+    : 0
+  const unlocked = games.reduce((sum, game) => sum + (game.unlockedCount ?? 0), 0)
+  const counted = games.reduce((sum, game) => sum + (game.achievementCount ?? 0), 0)
+  const cells: { label: string; value: string; accent?: string }[] = [
+    { label: "Games played", value: formatGs(games.length) },
+    { label: "Completed", value: formatGs(completed), accent: completed > 0 ? GOLD : undefined },
+    { label: "Mythic", value: formatGs(baseCount), accent: baseCount > 0 ? MYTHIC : undefined },
+    { label: "Avg. completion", value: `${(average * 100).toFixed(1)}%` },
+    { label: "Unlocked", value: formatGs(unlocked) },
+    ...(counted > unlocked ? [{ label: "Unearned", value: formatGs(counted - unlocked) }] : []),
+    ...(views != null ? [{ label: "Profile views", value: formatGs(views) }] : []),
+    ...(rank ? [{ label: "boxfiles rank", value: `#${formatGs(rank.rank)}`, accent: "rgb(var(--ambient))" }] : []),
+  ]
+  return (
+    <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden border-y border-line bg-line sm:mt-14 sm:grid-cols-4 xl:grid-cols-8">
+      {cells.map((cell) => (
+        <div
+          key={cell.label}
+          className="flex flex-col-reverse justify-end bg-background px-3 py-4 sm:px-4 sm:py-5"
+        >
+          <dt className="label-mono mt-2 text-muted">{cell.label}</dt>
+          <dd
+            className="font-display text-[1.75rem] font-semibold leading-none tracking-[-0.04em] tabular-nums sm:text-[2.6rem]"
+            style={cell.accent ? { color: cell.accent } : undefined}
+          >
+            {cell.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+/** Rarest five unlocks on the left, the latest unlock in the middle, recent 100% games on the right. */
+function Highlights({
+  unlocks,
+  games,
+  onOpen,
+}: {
+  unlocks: Promise<RecentUnlock[] | null>
+  games: Game[]
+  onOpen: (id: string) => void
+}) {
+  const feed = use(unlocks)
+  const rarest = (feed ?? [])
+    .filter((unlock) => unlock.achievement.rarity < 100)
+    .sort((a, b) => a.achievement.rarity - b.achievement.rarity)
+    .slice(0, 5)
+  const latest = feed?.[0] ?? null
+  const completed = games
+    .filter(isCompleted)
+    .sort((a, b) => (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? ""))
+    .slice(0, 4)
+  if (rarest.length === 0 && !latest && completed.length === 0) return null
+  return (
+    <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:items-stretch">
+      <div className="material light-strip relative rounded-[20px] border border-line p-4">
+        <p className="label-mono text-muted">Rarest 5</p>
+        {rarest.length === 0 ? (
+          <p className="mt-3 text-sm text-faint">No rarity data yet.</p>
+        ) : (
+          <ul className="mt-3 flex gap-2 sm:gap-2.5">
+            {rarest.map((unlock) => {
+              const color = rarityColor[rarityTier(unlock.achievement.rarity).tone]
+              return (
+                <li key={unlock.achievement.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpen(unlock.titleId)}
+                    title={`${unlock.achievement.name} · ${unlock.game} · ${formatRarity(unlock.achievement.rarity)} of players`}
+                    className="group block text-center"
+                  >
+                    <span
+                      className="block size-12 overflow-hidden rounded-xl transition-transform duration-300 group-hover:-translate-y-0.5 sm:size-16"
+                      style={{ boxShadow: `0 0 0 1.5px ${color}, 0 0 18px ${color}55` }}
+                    >
+                      <AchievementImage src={unlock.achievement.icon} color={color} />
+                    </span>
+                    <span className="label-mono mt-2 block tabular-nums" style={{ color }}>
+                      {formatRarity(unlock.achievement.rarity)}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+
+      {latest ? (
+        <button
+          type="button"
+          onClick={() => onOpen(latest.titleId)}
+          className="material light-strip group relative order-first flex min-w-0 items-center gap-4 rounded-[20px] border border-line p-4 text-left transition-colors hover:border-line-strong md:col-span-2 xl:order-none xl:col-span-1"
+        >
+          <span className="block size-16 shrink-0 overflow-hidden rounded-xl sm:size-20">
+            <AchievementImage src={latest.achievement.icon} color={rarityColor[rarityTier(latest.achievement.rarity).tone]} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="label-mono block text-muted">Latest unlock</span>
+            <span className="mt-1 block truncate font-display text-xl font-semibold tracking-[-0.03em] sm:text-2xl">
+              {latest.achievement.name}
+            </span>
+            <span className="block truncate text-sm text-muted">{latest.achievement.description}</span>
+            <span className="mt-1 block truncate text-xs text-faint">
+              {latest.achievement.unlockedAt && latest.achievement.unlockedAt !== "achieved"
+                ? `${formatUnlocked(latest.achievement.unlockedAt)} in `
+                : "In "}
+              <span className="text-foreground/80">{latest.game}</span>
+            </span>
+          </span>
+          <span className="hidden shrink-0 text-right sm:block">
+            <span
+              className="block font-display text-3xl font-semibold tabular-nums tracking-[-0.04em]"
+              style={{ color: rarityColor[rarityTier(latest.achievement.rarity).tone] }}
+            >
+              {formatRarity(latest.achievement.rarity)}
+            </span>
+            <span className="label-mono text-faint">{rarityTier(latest.achievement.rarity).label}</span>
+          </span>
+        </button>
+      ) : (
+        <div className="hidden xl:block" />
+      )}
+
+      {completed.length > 0 && (
+        <div className="material light-strip relative rounded-[20px] border border-line p-4">
+          <p className="label-mono text-muted">Recently completed</p>
+          <ul className="mt-3 flex gap-2 sm:gap-2.5">
+            {completed.map((game) => (
+              <li key={game.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(game.id)}
+                  title={`${game.title} · 100%`}
+                  className="group block"
+                >
+                  <span
+                    className="block size-12 overflow-hidden rounded-xl transition-transform duration-300 group-hover:-translate-y-0.5 sm:size-16"
+                    style={{ boxShadow: `0 0 0 1.5px ${GOLD}, 0 0 18px ${GOLD}55` }}
+                  >
+                    <Cover game={game} />
+                  </span>
+                  <span className="label-mono mt-2 block text-center" style={{ color: GOLD }}>
+                    100%
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function HighlightSkeleton() {
+  return (
+    <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[22rem_minmax(0,1fr)_18rem]" aria-hidden>
+      {[0, 1, 2].map((index) => (
+        <div key={index} className="h-[7.5rem] animate-pulse rounded-[20px] border border-line bg-card" />
+      ))}
+    </div>
+  )
+}
+
+const gameFilters: { value: GameFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "complete", label: "100%" },
+  { value: "base", label: "Mythic" },
+  { value: "progress", label: "In progress" },
+]
+
+/** Every game, as the main event: cover cards, lit gold at 100% and iridescent when the main game is done. */
+function GamesSection({ games, tierOf, onOpen }: { games: Game[]; tierOf: (game: Game) => Tier; onOpen: (id: string) => void }) {
+  const [filter, setFilter] = useState<GameFilter>("all")
+  const [sort, setSort] = useState<GameSort>("recent")
+  const [limit, setLimit] = useState(PAGE)
+  const counts: Record<GameFilter, number> = {
+    all: games.length,
+    complete: games.filter((game) => tierOf(game) === "complete").length,
+    base: games.filter((game) => tierOf(game) === "base").length,
+    progress: games.filter((game) => tierOf(game) === null).length,
+  }
+  const shown = games
+    .filter((game) => {
+      const tier = tierOf(game)
+      if (filter === "complete") return tier === "complete"
+      if (filter === "base") return tier === "base"
+      if (filter === "progress") return tier === null
+      return true
+    })
+    .sort((a, b) => {
+      if (sort === "completion") return ratio(b) - ratio(a)
+      if (sort === "score") return (b.earned ?? 0) - (a.earned ?? 0)
+      if (sort === "name") return a.title.localeCompare(b.title)
+      return (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? "")
+    })
+
+  return (
+    <section className="mt-16 sm:mt-24">
+      <div className="grid gap-x-8 gap-y-5 border-t border-line pt-5 lg:grid-cols-12 lg:items-end">
+        <div className="lg:col-span-5">
+          <p className="label-mono text-muted">(Games) {formatGs(games.length)}</p>
+          <h2 className="display-em mt-3 font-display text-4xl font-semibold leading-[0.95] tracking-[-0.045em] sm:text-6xl">
+            Every game, <em>every unlock</em>.
+          </h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 lg:col-span-7 lg:justify-end">
+          <Segmented
+            layoutId="game-filter"
+            value={filter}
+            onChange={(value) => {
+              setFilter(value)
+              setLimit(PAGE)
+            }}
+            options={gameFilters.map((option) => ({ ...option, count: counts[option.value] }))}
+          />
+          <Select
+            label="Sort games"
+            value={sort}
+            onChange={(value) => setSort(value as GameSort)}
+            options={[
+              { value: "recent", label: "Recently played" },
+              { value: "completion", label: "Completion" },
+              { value: "score", label: "Gamerscore" },
+              { value: "name", label: "A–Z" },
+            ]}
+          />
+        </div>
+      </div>
+
+      <TierLegend />
+
+      {shown.length === 0 ? (
+        <p className="mt-10 border-t border-line pt-10 text-center text-muted">
+          {games.length === 0 ? "No games yet. They show up once this player plays something on Xbox." : "No games in this view."}
+        </p>
+      ) : (
+        <ul className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-6">
+          {shown.slice(0, limit).map((game) => (
+            <li key={game.id}>
+              <GameCard game={game} tier={tierOf(game)} onOpen={() => onOpen(game.id)} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {shown.length > limit && (
+        <div className="mt-8 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setLimit(limit + PAGE)}
+            className="label-mono h-11 rounded-full border border-line px-6 text-muted transition-colors hover:border-line-strong hover:text-foreground"
+          >
+            Show more · {formatGs(shown.length - limit)} left
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** The three looks side by side, so the highlights read without explanation. */
+function TierLegend() {
+  return (
+    <ul className="label-mono mt-6 flex flex-wrap gap-x-6 gap-y-2 text-muted">
+      <li className="flex items-center gap-2">
+        <span className="complete-frame size-3 rounded-[4px]" aria-hidden />
+        100%: every achievement, DLC included
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="mythic-frame size-3 rounded-[4px]" aria-hidden />
+        Mythic: main game done, DLC left
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="size-3 rounded-[4px] border border-line-strong" aria-hidden />
+        In progress
+      </li>
+    </ul>
+  )
+}
+
+function GameCard({ game, tier, onOpen }: { game: Game; tier: Tier; onOpen: () => void }) {
+  const stats = gameTally(game)
+  const frame =
+    tier === "complete"
+      ? "complete-frame shadow-[0_0_28px_rgb(245_197_66/0.22)]"
+      : tier === "base"
+        ? "mythic-frame shadow-[0_0_28px_rgb(192_132_252/0.25)]"
+        : "bg-line hover:bg-line-strong"
+  const meter =
+    tier === "complete"
+      ? "linear-gradient(90deg, #ffe08a, #f5c542)"
+      : tier === "base"
+        ? "linear-gradient(90deg, #c084fc, #ff4fb8, #ffb347)"
+        : undefined
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`group block w-full rounded-[18px] p-px text-left transition-[transform,background-color] duration-300 hover:-translate-y-1 ${frame}`}
+    >
+      <span className="block overflow-hidden rounded-[17px] bg-[#0b0b0d]">
+        <span className="relative block aspect-square overflow-hidden">
+          <Cover game={game} className="transition-transform duration-500 group-hover:scale-[1.04]" />
+          <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0b0b0d] to-transparent" aria-hidden />
+          {tier && <TierBadge tier={tier} className="absolute left-2 top-2" />}
+          <span className="label-mono absolute bottom-2 right-2.5 tabular-nums text-foreground/90">
+            {formatPct(stats.completion)}
+          </span>
+        </span>
+        <span className="block px-3 pb-3 pt-1">
+          <span className="line-clamp-2 min-h-[2.5em] text-sm font-medium leading-tight">{game.title}</span>
+          <span className="mt-2 flex items-center justify-between gap-2">
+            <span className="label-mono tabular-nums text-muted">
+              {formatGs(stats.earned)}/{formatGs(stats.total)}G
+            </span>
+            {stats.count > 0 && (
+              <span className="label-mono tabular-nums text-faint">
+                {stats.unlocked}/{stats.count}
+              </span>
+            )}
+          </span>
+          <Meter value={stats.completion} className="mt-2" color={meter} />
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function TierBadge({ tier, className = "" }: { tier: Exclude<Tier, null>; className?: string }) {
+  return tier === "complete" ? (
+    <span
+      className={`label-mono inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold text-[#2a1f00] ${className}`}
+      style={{ background: "linear-gradient(135deg, #ffe08a, #f5c542)" }}
+    >
+      <TrophyIcon className="size-3" />
+      100%
+    </span>
+  ) : (
+    <span
+      className={`label-mono inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold text-white ${className}`}
+      style={{ background: "linear-gradient(135deg, #a855f7, #ec4899 60%, #f59e0b)" }}
+    >
+      ✦ Mythic
+    </span>
+  )
+}
+
+function Cover({ game, className = "" }: { game: Game; className?: string }) {
+  if (game.image) {
+    return (
+      // Xbox box art comes from several hosts, so a plain img keeps it simple.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={game.image} alt="" loading="lazy" className={`size-full object-cover ${className}`} />
+    )
+  }
+  return (
+    <span className={`grid size-full place-items-center bg-raised ${className}`}>
+      <Avatar name={game.title} size="lg" shape="square" />
+    </span>
+  )
+}
+
+/** One game's achievements in a panel that slides in over the page. */
+function GameDrawer({
+  game,
+  tier,
+  loading,
+  loadError,
+  filter,
+  onFilter,
+  sort,
+  onSort,
+  onClose,
+}: {
+  game: Game
+  tier: Tier
+  loading: boolean
+  loadError: string | null
+  filter: Filter
+  onFilter: (value: Filter) => void
+  sort: Sort
+  onSort: (value: Sort) => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose()
+    }
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    document.addEventListener("keydown", escape)
+    return () => {
+      document.body.style.overflow = overflow
+      document.removeEventListener("keydown", escape)
+    }
+  }, [onClose])
+
+  // Rendered on <body>: the page content sits in its own layer under the sticky header, and the drawer must cover both.
+  const mounted = useSyncExternalStore(subscribeNothing, () => true, () => false)
+  const stats = gameTally(game)
+  const shown = game.achievements
     .filter((achievement) => {
       if (filter === "unlocked") return achievement.unlockedAt
       if (filter === "locked") return !achievement.unlockedAt
@@ -98,180 +649,98 @@ export function ProfileView({
       return a.rarity - b.rarity
     })
 
-  return (
-    <MotionConfig reducedMotion="user">
-      <main className="shell pb-10 pt-8 sm:pt-12">
-        {/* Profile header */}
-        <section>
-          <div className="label-mono flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
-            <span className="flex items-center gap-2">
-              <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
-              (Profile) Xbox Live
+  if (!mounted) return null
+  return createPortal(
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={game.title}>
+      <motion.button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      />
+      <motion.aside
+        className="material scroll-thin absolute inset-y-0 right-0 flex w-full flex-col overflow-y-auto border-l border-line sm:max-w-xl"
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        transition={{ duration: 0.5, ease }}
+      >
+        <header className="light-strip relative border-b border-line p-5 sm:p-6">
+          <div className="flex items-start gap-4">
+            <span className="block size-20 shrink-0 overflow-hidden rounded-2xl sm:size-24">
+              <Cover game={game} />
             </span>
-            <CopyLink />
-          </div>
-          <div className="mt-8 grid items-end gap-8 sm:mt-12 lg:grid-cols-12">
-            <div className="flex min-w-0 items-end gap-4 sm:gap-6 lg:col-span-7">
-              <Avatar name={profile.gamertag} src={profile.avatar} size="xl" />
-              <div className="min-w-0">
-                <h1 className="break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
-                  {profile.gamertag}
-                </h1>
-                {profile.bio ? <p className="mt-3 max-w-xl text-pretty text-muted">{profile.bio}</p> : null}
-                <ProfileFacts profile={profile} />
-              </div>
-            </div>
-            <div className="lg:col-span-5 lg:text-right">
-              <p className="label-mono text-muted">Gamerscore</p>
-              <p
-                className="mt-2 font-display text-[clamp(3.5rem,9vw,8rem)] font-semibold leading-[0.82] tracking-[-0.06em] tabular-nums"
-                title="Gamerscore"
-              >
-                {formatGs(headline)}
-                <span className="ambient-text ml-[0.04em] align-top text-[0.34em] tracking-normal">G</span>
+            <div className="min-w-0 flex-1">
+              {tier && <TierBadge tier={tier} />}
+              <h2 className="mt-2 font-display text-2xl font-semibold leading-tight tracking-[-0.035em] sm:text-3xl">{game.title}</h2>
+              <p className="label-mono mt-2 tabular-nums text-muted">
+                {formatGs(stats.earned)} / {formatGs(stats.total)}G · {formatPct(stats.completion)}
               </p>
-              {stats.total > 0 && <p className="label-mono mt-3 text-faint">of {formatGs(stats.total)} possible</p>}
+              {gameMeta(game) && <p className="mt-1 text-xs text-faint">{gameMeta(game)}</p>}
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-muted transition-colors hover:border-line-strong hover:text-foreground"
+            >
+              <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden>
+                <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
-          <dl className="mt-10 grid grid-cols-2 border-t border-line sm:mt-14 sm:grid-cols-4">
-            <Stat label="Games" value={String(games.length)} />
-            <Stat
-              label="Achievements"
-              value={stats.count > stats.unlocked ? `${stats.unlocked} / ${stats.count}` : String(stats.unlocked)}
-            />
-            <Stat label="Completion" value={formatPct(stats.completion)} meter={stats.completion} />
-            <Stat
-              label="Rarest"
-              value={stats.rarest ? formatRarity(stats.rarest.rarity) : "None"}
-              tone={stats.rarest ? rarityTier(stats.rarest.rarity).tone : undefined}
-            />
-          </dl>
-        </section>
+          <Meter value={stats.completion} className="mt-5" />
+        </header>
 
-        {games.length === 0 || !game || !gameStats ? (
-          <Panel className="mt-6">
-            <div className="px-5 py-12 text-center">
-              <p className="font-medium">No games yet</p>
-              <p className="mt-1 text-sm text-muted">Games show up here once this player has played something on Xbox.</p>
-            </div>
-          </Panel>
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line bg-[#0b0b0d]/90 px-5 py-3 backdrop-blur-xl sm:px-6">
+          <Segmented
+            layoutId="achievement-filter"
+            value={filter}
+            onChange={onFilter}
+            options={[
+              { value: "unlocked", label: "Unlocked", count: stats.unlocked },
+              { value: "locked", label: "Locked", count: Math.max(0, stats.count - stats.unlocked) },
+              { value: "all", label: "All" },
+            ]}
+          />
+          <Select
+            label="Sort achievements"
+            value={sort}
+            onChange={(value) => onSort(value as Sort)}
+            options={[
+              { value: "rarity", label: "Rarest first" },
+              { value: "score", label: "Most gamerscore" },
+              { value: "recent", label: "Most recent" },
+            ]}
+          />
+        </div>
+
+        {loading ? (
+          <LoadingRows />
+        ) : shown.length === 0 ? (
+          <p className="px-6 py-14 text-center text-sm text-muted">
+            {loadError ?? (filter === "locked" ? "Every achievement in this game is unlocked." : "No achievements in this view.")}
+          </p>
         ) : (
-          <div className="mt-14 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
-            <aside className="flex flex-col gap-6 lg:sticky lg:top-20">
-              <Panel title="Games" aside={<span className="text-xs tabular-nums text-faint">{games.length}</span>}>
-                <ul className="scroll-thin max-h-[22rem] space-y-0.5 overflow-y-auto p-1.5 lg:max-h-[min(30rem,calc(100vh-22rem))]">
-                  {games.map((item) => (
-                    <GameRow
-                      key={item.id}
-                      game={item}
-                      selected={item.id === game.id}
-                      onSelect={() => setGameId(item.id)}
-                    />
-                  ))}
-                </ul>
-              </Panel>
-              <RarityLegend />
-            </aside>
-
-            <div className="flex min-w-0 flex-col gap-6">
-              {stats.rarest && (
-                <RarestCard
-                  name={stats.rarest.name}
-                  game={stats.rarest.game}
-                  rarity={stats.rarest.rarity}
-                  score={stats.rarest.score}
-                />
-              )}
-
-              <section className="material light-strip relative overflow-hidden rounded-2xl border border-line">
-                <header className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line px-4 py-3.5">
-                  <div className="mr-auto min-w-0">
-                    <h2 className="truncate font-display text-xl font-semibold tracking-[-0.02em]">{game.title}</h2>
-                    <p className="mt-0.5 text-xs text-faint">
-                      <Gs value={`${formatGs(gameStats.earned)} / ${formatGs(gameStats.total)}`} />
-                      {gameMeta(game) ? <span className="ml-3">{gameMeta(game)}</span> : null}
-                    </p>
-                  </div>
-                  <Segmented
-                    value={filter}
-                    onChange={setFilter}
-                    options={[
-                      { value: "unlocked", label: "Unlocked", count: gameStats.unlocked },
-                      { value: "locked", label: "Locked", count: Math.max(0, gameStats.count - gameStats.unlocked) },
-                      { value: "all", label: "All" },
-                    ]}
-                  />
-                  <SortSelect value={sort} onChange={setSort} />
-                </header>
-
-                {profile.xuid && !loaded ? (
-                  <LoadingRows />
-                ) : shown.length === 0 ? (
-                  <p className="px-4 py-12 text-center text-sm text-muted">
-                    {loadError ?? (filter === "locked" ? "Every achievement in this game is unlocked." : "No achievements in this view.")}
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-line">
-                    <AnimatePresence initial={false} mode="popLayout">
-                      {shown.map((achievement) => (
-                        <motion.li
-                          key={`${game.id}-${achievement.id}`}
-                          layout="position"
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, transition: { duration: 0.12 } }}
-                          transition={spring}
-                        >
-                          <AchievementRow achievement={achievement} />
-                        </motion.li>
-                      ))}
-                    </AnimatePresence>
-                  </ul>
-                )}
-              </section>
-            </div>
-          </div>
+          <ul className="divide-y divide-line pb-[env(safe-area-inset-bottom)]">
+            {shown.map((achievement) => (
+              <li key={achievement.id}>
+                <AchievementRow achievement={achievement} />
+              </li>
+            ))}
+          </ul>
         )}
-      </main>
-    </MotionConfig>
+      </motion.aside>
+    </div>,
+    document.body,
   )
 }
 
-function GameRow({ game, selected, onSelect }: { game: Game; selected: boolean; onSelect: () => void }) {
-  const stats = gameTally(game)
-  return (
-    <li>
-      <button
-        type="button"
-        aria-pressed={selected}
-        onClick={onSelect}
-        className={`group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors ${
-          selected ? "" : "hover:bg-white/[0.03]"
-        }`}
-      >
-        {selected && (
-          <motion.span
-            layoutId="game-active"
-            className="ambient-row absolute inset-0 rounded-xl ring-1 ring-line-strong"
-            transition={spring}
-            aria-hidden
-          />
-        )}
-        <span className="relative">
-          <Avatar name={game.title} src={game.image} size="md" shape="square" />
-        </span>
-        <span className="relative min-w-0 flex-1">
-          <span className={`block truncate text-sm font-medium ${selected ? "text-foreground" : "text-foreground/85"}`}>
-            {game.title}
-          </span>
-          <span className="mt-1.5 flex items-center gap-2">
-            <Meter value={stats.completion} className="flex-1" color={selected ? undefined : "var(--muted)"} />
-            <span className="w-8 text-right text-[11px] tabular-nums text-faint">{formatPct(stats.completion)}</span>
-          </span>
-        </span>
-      </button>
-    </li>
-  )
+function subscribeNothing() {
+  return () => {}
 }
 
 function AchievementRow({ achievement }: { achievement: Achievement }) {
@@ -284,8 +753,10 @@ function AchievementRow({ achievement }: { achievement: Achievement }) {
     achievement.platforms?.length ? achievement.platforms.map(words).join(", ") : "",
   ].filter(Boolean)
   return (
-    <div className="flex gap-4 px-4 py-4 transition-colors hover:bg-white/[0.015]">
-      <AchievementIcon src={achievement.icon} color={color} unlocked={unlocked} />
+    <div className="flex gap-4 px-5 py-4 transition-colors hover:bg-white/[0.015] sm:px-6">
+      <span className={`block size-12 shrink-0 overflow-hidden rounded-xl ${unlocked ? "" : "opacity-45 grayscale"}`} style={{ boxShadow: `0 0 0 1px ${color}55` }}>
+        <AchievementImage src={achievement.icon} color={color} />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
           <h3 className={`font-medium leading-snug ${unlocked ? "" : "text-foreground/70"}`}>{achievement.name}</h3>
@@ -307,22 +778,14 @@ function AchievementRow({ achievement }: { achievement: Achievement }) {
   )
 }
 
-function AchievementIcon({ src, color, unlocked }: { src?: string; color: string; unlocked: boolean }) {
-  const dim = unlocked ? "" : "opacity-45 grayscale"
+function AchievementImage({ src, color }: { src?: string; color: string }) {
   if (src) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt=""
-        className={`size-12 shrink-0 rounded-xl object-cover ${dim}`}
-        style={{ boxShadow: `0 0 0 1px ${color}55` }}
-      />
-    )
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" loading="lazy" className="size-full object-cover" />
   }
   return (
     <span
-      className={`grid size-12 shrink-0 place-items-center rounded-xl ${dim}`}
+      className="grid size-full place-items-center"
       style={{ background: `${color}14`, boxShadow: `inset 0 0 0 1px ${color}40`, color }}
       aria-hidden
     >
@@ -344,85 +807,19 @@ function RarityBadge({ tone, label }: { tone: RarityTone; label: string }) {
   )
 }
 
-function RarestCard({ name, game, rarity, score }: { name: string; game: string; rarity: number; score: number }) {
-  const tier = rarityTier(rarity)
-  const color = rarityColor[tier.tone]
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-2xl border bg-card"
-      style={{ borderColor: `${color}40` }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: `radial-gradient(520px 200px at 100% 0%, ${color}24, transparent 70%)` }}
-        aria-hidden
-      />
-      <div className="relative flex flex-wrap items-center gap-4 p-5">
-        <span
-          className="grid size-14 shrink-0 place-items-center rounded-2xl"
-          style={{ background: `${color}1a`, color, boxShadow: `inset 0 0 0 1px ${color}4d, 0 0 32px ${color}26` }}
-          aria-hidden
-        >
-          <TrophyIcon className="size-6" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium" style={{ color }}>
-            Rarest unlock
-          </p>
-          <p className="mt-0.5 truncate font-display text-xl font-semibold tracking-[-0.02em]">{name}</p>
-          <p className="truncate text-sm text-muted">
-            {game}, <Gs value={String(score)} />
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="font-display text-3xl font-semibold tabular-nums tracking-[-0.03em]" style={{ color }}>
-            {formatRarity(rarity)}
-          </p>
-          <p className="text-xs text-muted">of players have it</p>
-        </div>
-      </div>
-    </motion.section>
-  )
-}
-
-const tiers: Array<{ tone: RarityTone; label: string; range: string }> = [
-  { tone: "ultra", label: "Ultra Rare", range: "under 5%" },
-  { tone: "very", label: "Very Rare", range: "under 10%" },
-  { tone: "rare", label: "Rare", range: "under 25%" },
-  { tone: "uncommon", label: "Uncommon", range: "under 50%" },
-  { tone: "common", label: "Common", range: "50% and up" },
-]
-
-function RarityLegend() {
-  return (
-    <Panel title="Rarity tiers" className="hidden lg:block">
-      <ul className="space-y-2 px-4 py-3.5 text-sm">
-        {tiers.map((tier) => (
-          <li key={tier.tone} className="flex items-center gap-2.5">
-            <span className="size-2 rounded-full" style={{ background: rarityColor[tier.tone] }} aria-hidden />
-            <span>{tier.label}</span>
-            <span className="ml-auto text-xs text-faint">{tier.range}</span>
-          </li>
-        ))}
-      </ul>
-    </Panel>
-  )
-}
-
 function Segmented<T extends string>({
   value,
   onChange,
   options,
+  layoutId,
 }: {
   value: T
   onChange: (value: T) => void
   options: Array<{ value: T; label: string; count?: number }>
+  layoutId: string
 }) {
   return (
-    <div role="group" aria-label="Show" className="flex rounded-full border border-line bg-background p-0.5">
+    <div role="group" aria-label="Show" className="flex flex-wrap rounded-full border border-line bg-background p-0.5">
       {options.map((option) => {
         const active = option.value === value
         return (
@@ -431,17 +828,12 @@ function Segmented<T extends string>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className={`relative rounded-full px-3 py-1 text-sm transition-colors duration-200 ${
+            className={`relative rounded-full px-3 py-1.5 text-sm transition-colors duration-200 sm:py-1 ${
               active ? "text-background" : "text-muted hover:text-foreground"
             }`}
           >
             {active && (
-              <motion.span
-                layoutId="filter-pill"
-                className="absolute inset-0 rounded-full bg-foreground"
-                transition={spring}
-                aria-hidden
-              />
+              <motion.span layoutId={layoutId} className="absolute inset-0 rounded-full bg-foreground" transition={spring} aria-hidden />
             )}
             <span className="relative flex items-center gap-1.5">
               {option.label}
@@ -456,18 +848,30 @@ function Segmented<T extends string>({
   )
 }
 
-function SortSelect({ value, onChange }: { value: Sort; onChange: (value: Sort) => void }) {
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+}) {
   return (
     <label className="relative flex items-center">
-      <span className="sr-only">Sort by</span>
+      <span className="sr-only">{label}</span>
       <select
         value={value}
-        onChange={(event) => onChange(event.target.value as Sort)}
-        className="h-8 cursor-pointer appearance-none rounded-full border border-line bg-background pl-3 pr-8 text-sm text-foreground transition-colors hover:border-line-strong focus:outline-none focus-visible:border-foreground"
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 cursor-pointer appearance-none rounded-full border border-line bg-background pl-3 pr-8 text-base text-foreground sm:h-8 sm:text-sm transition-colors hover:border-line-strong focus:outline-none focus-visible:border-foreground"
       >
-        <option value="rarity">Rarest first</option>
-        <option value="score">Most gamerscore</option>
-        <option value="recent">Most recent</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
       </select>
       <svg viewBox="0 0 16 16" className="pointer-events-none absolute right-2.5 size-3.5 text-muted" aria-hidden>
         <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -479,8 +883,8 @@ function SortSelect({ value, onChange }: { value: Sort; onChange: (value: Sort) 
 function LoadingRows() {
   return (
     <ul className="divide-y divide-line" aria-label="Loading achievements">
-      {[0, 1, 2, 3].map((index) => (
-        <li key={index} className="flex gap-4 px-4 py-4">
+      {[0, 1, 2, 3, 4].map((index) => (
+        <li key={index} className="flex gap-4 px-6 py-4">
           <span className="size-12 shrink-0 animate-pulse rounded-xl bg-raised" />
           <span className="flex-1 space-y-2 pt-1">
             <span className="block h-3.5 w-1/3 animate-pulse rounded-full bg-raised" />
@@ -540,21 +944,6 @@ function unlockStatus(achievement: Achievement) {
   if (achievement.unlockedAt) return `Unlocked ${formatUnlocked(achievement.unlockedAt)}`
   if (achievement.progress) return `In progress ${achievement.progress}`
   return "Locked"
-}
-
-function Stat({ label, value, meter, tone }: { label: string; value: string; meter?: number; tone?: RarityTone }) {
-  return (
-    <div className="border-line py-5 pr-4 even:border-l even:pl-4 sm:border-l sm:pl-5 sm:first:border-l-0 sm:first:pl-0">
-      <dt className="label-mono text-muted">{label}</dt>
-      <dd
-        className="mt-2 font-display text-3xl font-semibold tabular-nums tracking-[-0.04em] sm:text-4xl"
-        style={tone ? { color: rarityColor[tone] } : undefined}
-      >
-        {value}
-      </dd>
-      {meter != null && <Meter value={meter} className="mt-3 max-w-40" />}
-    </div>
-  )
 }
 
 function TrophyIcon({ className = "" }: { className?: string }) {

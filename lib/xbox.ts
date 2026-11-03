@@ -1,5 +1,5 @@
 import { cookies } from "next/headers"
-import type { Achievement, Game, Profile } from "@/lib/format"
+import { completionTier, type Achievement, type Game, type Profile } from "@/lib/format"
 import { SESSION_COOKIE, unseal, type XboxSession } from "@/lib/session"
 import {
   achievementsFrom,
@@ -212,12 +212,36 @@ export async function lookupFriends(): Promise<XboxPerson[]> {
 
 export async function lookupRecentUnlocks(limit = 8): Promise<RecentUnlock[]> {
   const session = await requireSession()
+  return unlocksFor(session, session.xuid, limit)
+}
+
+/** A player's latest unlocks across every game, newest first: up to 1,000, enough to find their rarest. */
+export async function lookupUnlocks(xuid: string): Promise<RecentUnlock[]> {
+  if (!/^\d+$/.test(xuid)) throw new XboxError("Bad Xbox id.")
+  return unlocksFor(await requireSession(), xuid, 1000)
+}
+
+async function unlocksFor(session: XboxSession, xuid: string, limit: number) {
   const data = await xboxGet(
     session,
-    `${ACHIEVEMENTS}/xuid(${session.xuid})/achievements?unlockedOnly=true&orderBy=unlockTime&maxItems=${limit}`,
+    `${ACHIEVEMENTS}/xuid(${xuid})/achievements?unlockedOnly=true&orderBy=unlockTime&maxItems=${limit}`,
     "2",
   )
   return recentUnlocksFrom(data).slice(0, limit)
+}
+
+const BASE_CHECKS = 12
+
+/** Which of these games have the main game finished while add-on achievements are still locked. */
+export async function lookupBaseComplete(xuid: string, titleIds: string[]): Promise<string[]> {
+  if (!/^\d+$/.test(xuid) || titleIds.some((id) => !/^\d+$/.test(id))) throw new XboxError("Bad Xbox id.")
+  const session = await requireSession()
+  const ids = [...new Set(titleIds)].slice(0, BASE_CHECKS)
+  const results = await Promise.allSettled(ids.map((id) => achievementsFor(session, xuid, id)))
+  return ids.filter((_, index) => {
+    const result = results[index]
+    return result.status === "fulfilled" && completionTier(result.value) === "base"
+  })
 }
 
 export type NextUp = { achievement: Achievement; game: Game }

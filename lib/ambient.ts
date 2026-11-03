@@ -2,7 +2,7 @@
 // AMBIENT_SCRIPT applies the saved choice before first paint; applyAmbient does the same live.
 
 export type Ambient = {
-  /** "xbox" follows the signed-in player's Xbox profile color; "custom" uses `a`. */
+  /** "xbox" follows the signed-in player's Xbox profile color, only once they pick it; "custom" uses `a`. */
   source: "xbox" | "custom"
   a: string
   b: string
@@ -11,11 +11,11 @@ export type Ambient = {
   level: number
 }
 
-export const DEFAULT_COLOR = "#4cc3ff"
 const KEY = "boxfiles:ambient"
 const XBOX_KEY = "boxfiles:xbox-color"
 
-export const DEFAULT_AMBIENT: Ambient = { source: "xbox", a: DEFAULT_COLOR, b: "#9b5cff", dual: false, level: 70 }
+/** Nebula: violet into ice blue, the look everyone starts with until they choose their own. */
+export const DEFAULT_AMBIENT: Ambient = { source: "custom", a: "#9b5cff", b: "#4cc3ff", dual: true, level: 70 }
 
 export const PRESETS = [
   { name: "Polar", color: "#d6ecff" },
@@ -48,7 +48,7 @@ export function loadAmbient(): Ambient {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Ambient> | null
     if (!saved) return DEFAULT_AMBIENT
     return {
-      source: saved.source === "custom" ? "custom" : "xbox",
+      source: saved.source === "xbox" ? "xbox" : "custom",
       a: typeof saved.a === "string" && HEX.test(saved.a) ? saved.a : DEFAULT_AMBIENT.a,
       b: typeof saved.b === "string" && HEX.test(saved.b) ? saved.b : DEFAULT_AMBIENT.b,
       dual: saved.dual === true,
@@ -119,4 +119,4 @@ export function hexToHue(hex: string) {
 }
 
 /** Runs in <head> before paint, so the saved lighting shows without a flash of the default. */
-export const AMBIENT_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("${KEY}")||"null")||{},x=localStorage.getItem("${XBOX_KEY}"),h=/^#[0-9a-f]{6}$/i,a=s.source!=="custom"&&x&&h.test(x)?x:(h.test(s.a||"")?s.a:"${DEFAULT_COLOR}"),b=s.dual&&h.test(s.b||"")?s.b:a,t=function(c){return[1,3,5].map(function(i){return parseInt(c.slice(i,i+2),16)}).join(" ")},r=document.documentElement.style;r.setProperty("--ambient",t(a));r.setProperty("--ambient-2",t(b));r.setProperty("--glow",String((typeof s.level==="number"?s.level:${DEFAULT_AMBIENT.level})/100))}catch(e){}`
+export const AMBIENT_SCRIPT = `try{var d=${JSON.stringify(DEFAULT_AMBIENT)},s=JSON.parse(localStorage.getItem("${KEY}")||"null")||d,x=localStorage.getItem("${XBOX_KEY}"),h=/^#[0-9a-f]{6}$/i,a=s.source==="xbox"&&x&&h.test(x)?x:(h.test(s.a||"")?s.a:d.a),b=s.dual&&h.test(s.b||"")?s.b:a,t=function(c){return[1,3,5].map(function(i){return parseInt(c.slice(i,i+2),16)}).join(" ")},r=document.documentElement.style;r.setProperty("--ambient",t(a));r.setProperty("--ambient-2",t(b));r.setProperty("--glow",String((typeof s.level==="number"?s.level:d.level)/100))}catch(e){}`

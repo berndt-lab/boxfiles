@@ -1,11 +1,14 @@
 import { cacheLife, cacheTag } from "next/cache"
 import { tally, type Profile } from "@/lib/format"
+import { cleanSocials, type Socials } from "@/lib/socials"
 
 // Upstash Redis over its REST API: a sorted set ranks xuids by gamerscore, a hash holds what each row shows.
 const SCORES = "lb:gamerscore"
 const PLAYERS = "lb:players"
 const HIDDEN = "lb:hidden"
 const TAGS = "lb:tags"
+const SOCIALS = "lb:socials"
+const VIEWS = "lb:views"
 export const LEADERBOARD_TAG = "leaderboard"
 
 export type LeaderboardEntry = {
@@ -142,4 +145,31 @@ export async function leaveBoard(xuid: string) {
 export async function joinBoard(entry: LeaderboardEntry) {
   await redis([["SREM", HIDDEN, entry.xuid]])
   await saveEntry(entry)
+}
+
+/** Counts a visit to someone's profile. Owners viewing themselves aren't counted by the caller. */
+export async function countView(xuid: string) {
+  if (!storage()) return
+  await redis([["HINCRBY", VIEWS, xuid, 1]])
+}
+
+export async function viewsOf(xuid: string): Promise<number | null> {
+  if (!storage()) return null
+  const [views] = await redis([["HGET", VIEWS, xuid]])
+  return Number(views ?? 0) || 0
+}
+
+export async function socialsOf(xuid: string): Promise<Socials> {
+  if (!storage()) return {}
+  const [row] = await redis([["HGET", SOCIALS, xuid]])
+  if (typeof row !== "string") return {}
+  try {
+    return cleanSocials(JSON.parse(row) as Record<string, unknown>)
+  } catch {
+    return {}
+  }
+}
+
+export async function saveSocials(xuid: string, socials: Socials) {
+  await redis([Object.keys(socials).length > 0 ? ["HSET", SOCIALS, xuid, JSON.stringify(socials)] : ["HDEL", SOCIALS, xuid]])
 }

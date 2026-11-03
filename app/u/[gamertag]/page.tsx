@@ -2,13 +2,25 @@ import type { Metadata } from "next"
 import { after } from "next/server"
 import { Suspense } from "react"
 import { ProfileView, type Filter } from "@/components/profile-view"
+import { SocialLinks } from "@/components/social-links"
 import { Avatar, Meter } from "@/components/ui"
 import { XboxAmbient } from "@/components/xbox-ambient"
 import { SignInLink, XboxSetup } from "@/components/xbox-setup"
 import { formatGs, formatPct, type Profile } from "@/lib/format"
-import { entryByTag, entryFromProfile, saveEntry, type LeaderboardEntry } from "@/lib/leaderboard"
+import {
+  countView,
+  entryByTag,
+  entryFromProfile,
+  leaderboardReady,
+  rankOf,
+  saveEntry,
+  socialsOf,
+  viewsOf,
+  type LeaderboardEntry,
+} from "@/lib/leaderboard"
+import type { Socials } from "@/lib/socials"
 import { displayTag } from "@/lib/profile"
-import { XboxError, currentSession, lookupXboxProfile } from "@/lib/xbox"
+import { XboxError, currentSession, lookupUnlocks, lookupXboxProfile } from "@/lib/xbox"
 import { authConfigured } from "@/lib/xbox-auth"
 
 type GamertagPage = PageProps<"/u/[gamertag]">
@@ -41,7 +53,10 @@ async function ProfilePage({ params, searchParams }: GamertagPage) {
 
   if (!session) {
     const entry = await publicEntry(gamertag)
-    return entry ? <PublicCard entry={entry} /> : <SignInNotice label={label} />
+    if (!entry) return <SignInNotice label={label} />
+    const socials = await socialsOf(entry.xuid).catch(() => ({}))
+    after(() => countView(entry.xuid).catch(() => {}))
+    return <PublicCard entry={entry} socials={socials} />
   }
 
   let profile: Profile | null = null
@@ -62,23 +77,40 @@ async function ProfilePage({ params, searchParams }: GamertagPage) {
       />
     )
   }
-  const entry = profile.xuid === session.xuid ? entryFromProfile(profile) : null
-  if (entry) {
-    // Viewing your own profile keeps your leaderboard row current.
-    after(() => saveEntry(entry).catch(() => {}))
-  }
+  const xuid = profile.xuid ?? ""
+  const mine = xuid === session.xuid
+  const entry = mine ? entryFromProfile(profile) : null
+  // Your own visits keep your leaderboard row current; anyone else's count as a profile view.
+  after(() => (entry ? saveEntry(entry) : countView(xuid)).catch(() => {}))
+  const [views, rank, socials] = await Promise.all([
+    viewsOf(xuid).catch(() => null),
+    rankOf(xuid).catch(() => null),
+    socialsOf(xuid).catch((): Socials => ({})),
+  ])
+  // Started here, not awaited: the rarest and latest unlocks stream in while the games grid is already showing.
+  const unlocks = lookupUnlocks(xuid).catch(() => null)
   const game = typeof query.game === "string" ? query.game : undefined
   const show: Filter | undefined = query.show === "locked" ? "locked" : undefined
   return (
     <>
-      {entry && profile.color && <XboxAmbient color={profile.color} />}
-      <ProfileView key={profile.gamertag} profile={profile} initialGame={game} initialFilter={show} />
+      {mine && profile.color && <XboxAmbient color={profile.color} />}
+      <ProfileView
+        key={profile.gamertag}
+        profile={profile}
+        initialGame={game}
+        initialFilter={show}
+        unlocks={unlocks}
+        views={views}
+        rank={rank}
+        socials={socials}
+        canEditSocials={mine && leaderboardReady()}
+      />
     </>
   )
 }
 
 /** What a shared link shows to someone who isn't signed in: the leaderboard card, plus a way in. */
-function PublicCard({ entry }: { entry: LeaderboardEntry }) {
+function PublicCard({ entry, socials }: { entry: LeaderboardEntry; socials: Socials }) {
   const completion = entry.total === 0 ? 0 : entry.earned / entry.total
   return (
     <main className="shell pt-8 sm:pt-12">
@@ -92,9 +124,12 @@ function PublicCard({ entry }: { entry: LeaderboardEntry }) {
       <div className="mt-8 grid items-end gap-8 sm:mt-12 lg:grid-cols-12">
         <div className="flex min-w-0 items-end gap-4 sm:gap-6 lg:col-span-7">
           <Avatar name={entry.gamertag} src={entry.avatar} size="xl" />
-          <h1 className="min-w-0 break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
-            {entry.gamertag}
-          </h1>
+          <div className="min-w-0">
+            <h1 className="break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
+              {entry.gamertag}
+            </h1>
+            <SocialLinks socials={socials} className="mt-4" />
+          </div>
         </div>
         <div className="lg:col-span-5 lg:text-right">
           <p className="label-mono text-muted">Gamerscore</p>
