@@ -14,7 +14,7 @@ const tabs: { board: Board; label: string; value: string; note: string }[] = [
     board: "difficulty",
     label: "Difficulty",
     value: "Score",
-    note: "Gamerscore weighted by rarity across each player's recent and biggest games: ultra rare counts 5×, very rare 3×, rare 2×, uncommon 1.5×.",
+    note: "Gamerscore weighted by rarity across each player's latest 1,000 unlocks: ultra rare counts 5×, very rare 3×, rare 2×, uncommon 1.5×.",
   },
   { board: "completions", label: "Completions", value: "100% games", note: "Ranked by games with every achievement unlocked." },
 ]

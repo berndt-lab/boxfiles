@@ -181,3 +181,34 @@ const unfiltered = achievementsFrom(
 assert.equal(unfiltered.foreign, 1)
 assert.deepEqual(unfiltered.achievements.map((achievement) => achievement.name), ["Mine"])
 console.log("ok")
+
+// Shape of a real contract 4 answer: contract 2 plus a rarity object.
+const v4 = achievementsFrom(
+  {
+    achievements: [
+      {
+        id: "4",
+        name: "Prison Breakout",
+        titleAssociations: [{ name: "Gears of War: Reloaded", id: 1829869520 }],
+        progressState: "Achieved",
+        progression: { requirements: [], timeUnlocked: "2026-10-16T21:22:53.2200000Z" },
+        description: "Completed tutorial path on any difficulty",
+        productId: "00000000-0000-0000-0000-00006d1197d0",
+        achievementType: "Persistent",
+        rewards: [{ value: "10", type: "Gamerscore", valueType: "Int" }],
+        estimatedTime: "00:00:00",
+        isRevoked: false,
+        rarity: { currentCategory: "Common", currentPercentage: 66.16 },
+      },
+    ],
+    pagingInfo: { continuationToken: null },
+  },
+  "1829869520",
+)
+assert.equal(v4.foreign, 0)
+assert.equal(v4.achievements[0]?.rarity, 66.16)
+assert.equal(v4.achievements[0]?.score, 10)
+assert.equal(v4.achievements[0]?.unlockedAt, "2026-10-16")
+assert.equal(v4.achievements[0]?.product, "00000000-0000-0000-0000-00006d1197d0")
+assert.equal(v4.achievements[0]?.estimate, undefined)
+console.log("ok")
