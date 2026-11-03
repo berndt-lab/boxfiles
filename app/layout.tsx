@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
 import { Bricolage_Grotesque, Geist, Geist_Mono, Instrument_Serif } from "next/font/google"
+import { AmbientScript } from "@/components/ambient-script"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
-import { AMBIENT_SCRIPT } from "@/lib/ambient"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -47,10 +47,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    // The head script sets the viewer's ambient lighting on <html> before React hydrates.
+    // AmbientScript sets the viewer's ambient lighting on <html> before React hydrates.
     <html lang="en" className={`${geistSans.variable} ${bricolage.variable} ${geistMono.variable} ${instrument.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: AMBIENT_SCRIPT }} />
+        <AmbientScript />
       </head>
       <body className="relative flex min-h-full flex-col bg-background font-sans text-foreground">
         <PageGrid />
