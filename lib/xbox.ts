@@ -266,21 +266,25 @@ async function unlocksFor(session: XboxSession, xuid: string, limit: number) {
  * Development only: what the achievements service actually returns for each contract version, for one game and
  * for the cross-game feed. Shows the top-level keys, the count, and the first achievement in full.
  */
-export async function inspectAchievements(titleId?: string) {
+export async function inspectAchievements({ titleId, gamertag }: { titleId?: string; gamertag?: string }) {
   const session = await requireSession()
-  const games = gamesFrom(await xboxFetch(session, titlesUrl(session.xuid), "2"))
+  // Any player works, so a throwaway account can inspect someone who actually has achievements.
+  const found = gamertag ? await personByTag(session, gamertag) : null
+  if (gamertag && !found) throw new XboxError(`No Xbox profile for ${gamertag}.`)
+  const xuid = found?.person.xuid ?? session.xuid
+  const games = gamesFrom(await xboxFetch(session, titlesUrl(xuid), "2"))
     .filter((game) => (game.earned ?? 0) > 0)
     .sort((a, b) => (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? ""))
   const id = titleId && /^\d+$/.test(titleId) ? titleId : games[0]?.id
   const ids = games.slice(0, 2).map((game) => game.id)
-  const base = `${ACHIEVEMENTS}/xuid(${session.xuid})/achievements`
+  const base = `${ACHIEVEMENTS}/xuid(${xuid})/achievements`
   const requests: Record<string, string> = {
     game: `${base}?titleId=${id}&maxItems=3`,
     feed: `${base}?unlockedOnly=true&orderBy=unlockTime&maxItems=3`,
     "feed UnlockTime": `${base}?unlockedOnly=true&orderBy=UnlockTime&maxItems=3`,
     "feed two titles": `${base}?titleId=${ids.join(",")}&unlockedOnly=true&maxItems=3`,
   }
-  const report: Record<string, unknown> = { titleId: id ?? null, gamesWithScore: games.length }
+  const report: Record<string, unknown> = { xuid, titleId: id ?? null, gamesWithScore: games.length }
   for (const [name, url] of Object.entries(requests)) {
     for (const contract of ["2", "3", "4"]) {
       try {
