@@ -177,7 +177,19 @@ export async function lookupAchievements(xuid: string, titleId: string): Promise
   return achievementsFor(await requireSession(), xuid, titleId)
 }
 
+// Contract 3 is the one that carries rarity, but it may ignore the titleId filter. Ask it first, and fall back to
+// contract 2 (no rarity) when the answer fails or mixes in other games.
 async function achievementsFor(session: XboxSession, xuid: string, titleId: string): Promise<Achievement[]> {
+  try {
+    const withRarity = await achievementPages(session, xuid, titleId, "3")
+    if (withRarity) return withRarity
+  } catch (error) {
+    if (expired(error)) throw error
+  }
+  return (await achievementPages(session, xuid, titleId, "2")) ?? []
+}
+
+async function achievementPages(session: XboxSession, xuid: string, titleId: string, contract: string) {
   const achievements: Achievement[] = []
   const seen = new Set<string>()
   let token: string | null = null
@@ -187,11 +199,12 @@ async function achievementsFor(session: XboxSession, xuid: string, titleId: stri
     const path = token ? `${base}&continuationToken=${encodeURIComponent(token)}` : base
     let batch: ReturnType<typeof achievementsFrom>
     try {
-      batch = achievementsFrom(await xboxGet(session, path, "2"), titleId)
+      batch = achievementsFrom(await xboxGet(session, path, contract), titleId)
     } catch (error) {
       if (page === 0) throw error
       break
     }
+    if (batch.foreign > 0) return null
     for (const achievement of batch.achievements) {
       if (seen.has(achievement.id)) continue
       seen.add(achievement.id)
@@ -222,12 +235,16 @@ export async function lookupUnlocks(xuid: string): Promise<RecentUnlock[]> {
 }
 
 async function unlocksFor(session: XboxSession, xuid: string, limit: number) {
-  const data = await xboxGet(
-    session,
-    `${ACHIEVEMENTS}/xuid(${xuid})/achievements?unlockedOnly=true&orderBy=unlockTime&maxItems=${limit}`,
-    "2",
-  )
-  return recentUnlocksFrom(data).slice(0, limit)
+  const url = `${ACHIEVEMENTS}/xuid(${xuid})/achievements?unlockedOnly=true&orderBy=unlockTime&maxItems=${limit}`
+  // Contract 3 adds rarity; contract 2 is the fallback when it's refused.
+  const data = await xboxGet(session, url, "3").catch((error: unknown) => {
+    if (expired(error)) throw error
+    return xboxGet(session, url, "2")
+  })
+  // Newest first, whether or not the service honored orderBy.
+  return recentUnlocksFrom(data)
+    .sort((a, b) => (b.achievement.unlockedAt ?? "").localeCompare(a.achievement.unlockedAt ?? ""))
+    .slice(0, limit)
 }
 
 const BASE_CHECKS = 12
@@ -255,7 +272,8 @@ function completion(game: Game) {
 
 /**
  * The easiest gamerscore still on the table: locked achievements from the player's closest-to-done games,
- * most commonly unlocked first. Time-limited challenges and achievements without rarity data are left out.
+ * most commonly unlocked first. Time-limited challenges are left out; achievements without rarity data come last,
+ * those already in progress first, then the cheapest.
  */
 export async function lookupNextUp(games: Game[], limit = 8): Promise<NextUp[]> {
   const session = await requireSession()
@@ -267,8 +285,8 @@ export async function lookupNextUp(games: Game[], limit = 8): Promise<NextUp[]> 
   const picks = lists.flatMap((result, index) => {
     if (result.status === "rejected") return []
     return result.value
-      .filter((achievement) => !achievement.unlockedAt && achievement.kind !== "Challenge" && achievement.rarity < 100)
-      .sort((a, b) => b.rarity - a.rarity || b.score - a.score)
+      .filter((achievement) => !achievement.unlockedAt && achievement.kind !== "Challenge")
+      .sort(easiestFirst)
       .slice(0, PER_GAME)
       .map((achievement) => ({ achievement, game: candidates[index] }))
   })
@@ -276,5 +294,12 @@ export async function lookupNextUp(games: Game[], limit = 8): Promise<NextUp[]> 
     const failed = lists.find((result) => result.status === "rejected")
     if (failed?.status === "rejected") throw failed.reason
   }
-  return picks.sort((a, b) => b.achievement.rarity - a.achievement.rarity || b.achievement.score - a.achievement.score).slice(0, limit)
+  return picks.sort((a, b) => easiestFirst(a.achievement, b.achievement)).slice(0, limit)
+}
+
+function easiestFirst(a: Achievement, b: Achievement) {
+  if (a.rarity != null && b.rarity != null) return b.rarity - a.rarity || b.score - a.score
+  if (a.rarity != null) return -1
+  if (b.rarity != null) return 1
+  return Number(Boolean(b.progress)) - Number(Boolean(a.progress)) || a.score - b.score
 }

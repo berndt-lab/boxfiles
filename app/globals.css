@@ -185,28 +185,6 @@ body::after {
   color: transparent;
 }
 
-/* An endless horizontal ticker; the track holds its content twice and slides by half. */
-@keyframes marquee {
-  to {
-    transform: translateX(-50%);
-  }
-}
-.marquee-track {
-  animation: marquee var(--marquee-duration, 40s) linear infinite;
-}
-.marquee:hover .marquee-track {
-  animation-play-state: paused;
-}
-
-/* Rows that light up on hover: the trim strip fades in along the top edge. */
-.row-light::before {
-  opacity: 0;
-}
-.row-light:hover::before,
-.row-light:focus-within::before {
-  opacity: calc(0.9 * var(--glow));
-}
-
 /* Game card frames. 100%: solid gold. Mythic (main game done, DLC left): a slowly turning iridescent ring. */
 .complete-frame {
   background: linear-gradient(135deg, #fff0b8, #f5c542 45%, #b8860b);

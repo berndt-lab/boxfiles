@@ -90,46 +90,7 @@ export function Gs({
   )
 }
 
-/** An editorial section opener: a mono index on the left, a big headline on the right, over a hairline. */
-export function SectionHead({
-  index,
-  label,
-  title,
-  aside,
-}: {
-  index: string
-  label: string
-  title: ReactNode
-  aside?: ReactNode
-}) {
-  return (
-    <div className="grid gap-x-8 gap-y-4 border-t border-line pt-5 sm:grid-cols-12">
-      <p className="label-mono text-muted sm:col-span-3">
-        ({index}) {label}
-      </p>
-      <h2 className="display-em text-balance font-display text-4xl font-semibold leading-[0.95] tracking-[-0.045em] sm:col-span-7 sm:text-6xl">
-        {title}
-      </h2>
-      {aside ? <div className="self-end sm:col-span-2 sm:text-right">{aside}</div> : null}
-    </div>
-  )
-}
-
-/** An endless ticker band. Content is rendered twice so the loop has no seam. */
-export function Marquee({ children, seconds = 40 }: { children: ReactNode; seconds?: number }) {
-  return (
-    <div className="marquee relative overflow-hidden border-y border-line py-5 [mask-image:linear-gradient(90deg,transparent,black_8%,black_92%,transparent)]">
-      <div className="marquee-track flex w-max" style={{ ["--marquee-duration" as string]: `${seconds}s` }}>
-        <div className="flex shrink-0 items-center">{children}</div>
-        <div className="flex shrink-0 items-center" aria-hidden>
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** Primary call to action: a light pill with an arrow that slides on hover. */
+/** The diagonal arrow used on links and call-to-action pills. */
 export function ArrowIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" className={className} aria-hidden>

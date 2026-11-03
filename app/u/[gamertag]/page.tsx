@@ -79,16 +79,20 @@ async function ProfilePage({ params, searchParams }: GamertagPage) {
   }
   const xuid = profile.xuid ?? ""
   const mine = xuid === session.xuid
-  const entry = mine ? entryFromProfile(profile) : null
-  // Your own visits keep your leaderboard row current; anyone else's count as a profile view.
-  after(() => (entry ? saveEntry(entry) : countView(xuid)).catch(() => {}))
+  // Started here, not awaited: the rarest and latest unlocks stream in while the games grid is already showing.
+  const unlocks = lookupUnlocks(xuid).catch(() => null)
+  // Your own visits keep your leaderboard rows current; anyone else's count as a profile view.
+  after(async () => {
+    try {
+      const entry = mine ? entryFromProfile(profile, await unlocks) : null
+      await (entry ? saveEntry(entry) : countView(xuid))
+    } catch {}
+  })
   const [views, rank, socials] = await Promise.all([
     viewsOf(xuid).catch(() => null),
     rankOf(xuid).catch(() => null),
     socialsOf(xuid).catch((): Socials => ({})),
   ])
-  // Started here, not awaited: the rarest and latest unlocks stream in while the games grid is already showing.
-  const unlocks = lookupUnlocks(xuid).catch(() => null)
   const game = typeof query.game === "string" ? query.game : undefined
   const show: Filter | undefined = query.show === "locked" ? "locked" : undefined
   return (

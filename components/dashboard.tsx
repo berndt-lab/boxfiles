@@ -5,15 +5,14 @@ import { Suspense, type ReactNode } from "react"
 import { CopyLink } from "@/components/copy-link"
 import { Leaderboard } from "@/components/leaderboard"
 import { CountUp } from "@/components/motion"
-import { ArrowIcon, Avatar, Gs, Meter, Panel, SectionHead } from "@/components/ui"
+import { ArrowIcon, Avatar, Gs, Meter, Panel } from "@/components/ui"
 import { XboxAmbient } from "@/components/xbox-ambient"
 import {
   formatGs,
   formatPct,
   formatRarity,
   formatUnlocked,
-  rarityColor,
-  rarityTier,
+  rarityHue,
   tally,
   type Achievement,
   type Game,
@@ -29,7 +28,7 @@ import {
   saveEntry,
 } from "@/lib/leaderboard"
 import type { XboxSession } from "@/lib/session"
-import { currentSession, lookupFriends, lookupMyProfile, lookupNextUp, lookupRecentUnlocks } from "@/lib/xbox"
+import { currentSession, lookupFriends, lookupMyProfile, lookupNextUp, lookupRecentUnlocks, lookupUnlocks } from "@/lib/xbox"
 
 const XBOX_DOWN = "Couldn't reach Xbox Live. Refresh in a minute."
 
@@ -49,8 +48,12 @@ async function leaveLeaderboard() {
 
 async function joinLeaderboard() {
   "use server"
-  const profile = await lookupMyProfile().catch(() => null)
-  const entry = profile ? entryFromProfile(profile) : null
+  const session = await currentSession()
+  const [profile, unlocks] = await Promise.all([
+    lookupMyProfile().catch(() => null),
+    session ? lookupUnlocks(session.xuid).catch(() => null) : null,
+  ])
+  const entry = profile ? entryFromProfile(profile, unlocks) : null
   if (!entry) return
   await joinBoard(entry)
   updateTag(LEADERBOARD_TAG)
@@ -64,18 +67,7 @@ export function Dashboard({ session, notice }: { session: XboxSession; notice?: 
       <Suspense fallback={<Skeleton className="h-72" />}>
         <Overview session={session} />
       </Suspense>
-      <div className="mt-20 sm:mt-28">
-        <SectionHead
-          index="01"
-          label="Today's plan"
-          title={
-            <>
-              What to <em>unlock next</em>.
-            </>
-          }
-        />
-      </div>
-      <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+      <div className="mt-12 grid gap-6 sm:mt-16 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
           <Suspense fallback={<Skeleton className="h-[26rem]" />}>
             <UpNext gamertag={session.gamertag} />
@@ -93,18 +85,7 @@ export function Dashboard({ session, notice }: { session: XboxSession; notice?: 
           </Suspense>
         </div>
       </div>
-      <div className="mt-20 sm:mt-28">
-        <SectionHead
-          index="02"
-          label="The board"
-          title={
-            <>
-              Where you <em>stand</em>.
-            </>
-          }
-        />
-      </div>
-      <div className="mt-10 space-y-4">
+      <div className="mt-12 space-y-4 sm:mt-16">
         <Leaderboard me={session.xuid} />
         <Suspense fallback={null}>
           <Membership session={session} />
@@ -126,30 +107,24 @@ async function Overview({ session }: { session: XboxSession }) {
       </Panel>
     )
   }
-  const entry = entryFromProfile(profile)
-  if (entry) {
-    // Visiting home keeps your leaderboard row current.
-    after(() => saveEntry(entry).catch(() => {}))
-  }
+  // Visiting home keeps your leaderboard rows current, difficulty score included.
+  const unlocks = lookupUnlocks(session.xuid).catch(() => null)
+  after(async () => {
+    const entry = entryFromProfile(profile, await unlocks)
+    if (entry) await saveEntry(entry).catch(() => {})
+  })
   const stats = tally(profile.games)
   const gamerscore = profile.gamerscore ?? stats.earned
+  const hidden = Math.max(0, gamerscore - stats.earned)
   const completed = profile.games.filter((game) => (game.total ?? 0) > 0 && (game.earned ?? 0) >= (game.total ?? 0)).length
   return (
     <section>
       {profile.color && <XboxAmbient color={profile.color} />}
-      <div className="label-mono flex items-center justify-between gap-4 border-b border-line pb-4 text-muted">
-        <span className="flex items-center gap-2">
-          <span className="ambient-glow size-1.5 rounded-full bg-ambient" aria-hidden />
-          (You) Signed in
-        </span>
-        <span>{rank ? `Rank ${formatGs(rank.rank)} / ${formatGs(rank.total)}` : "Unranked"}</span>
-      </div>
-      <div className="mt-8 grid items-end gap-8 sm:mt-12 lg:grid-cols-12">
+      <div className="grid items-end gap-8 lg:grid-cols-12">
         <div className="flex min-w-0 items-end gap-4 sm:gap-6 lg:col-span-7">
           <Avatar name={profile.gamertag} src={profile.avatar} size="xl" />
           <div className="min-w-0">
-            <p className="label-mono text-muted">Welcome back</p>
-            <h1 className="mt-2 break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
+            <h1 className="break-all font-display text-[clamp(2.5rem,7vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.055em]">
               {profile.gamertag}
             </h1>
           </div>
@@ -160,6 +135,7 @@ async function Overview({ session }: { session: XboxSession }) {
             <CountUp value={gamerscore} />
             <span className="ambient-text ml-[0.04em] align-top text-[0.34em] tracking-normal">G</span>
           </p>
+          {hidden > 0 && <p className="label-mono mt-3 text-faint">{formatGs(hidden)}G from games hidden on Xbox</p>}
         </div>
       </div>
       <dl className="mt-10 grid grid-cols-2 border-t border-line sm:mt-14 sm:grid-cols-4">
@@ -212,9 +188,6 @@ async function UpNext({ gamertag }: { gamertag: string }) {
         </p>
       ) : (
         <>
-          <p className="border-b border-line px-4 py-2.5 text-xs text-faint">
-            Locked achievements most players already have, from the games you&apos;re closest to finishing.
-          </p>
           <ul className="divide-y divide-line">
             {picks.map(({ achievement, game }) => (
               <li key={achievement.id}>
@@ -432,11 +405,12 @@ function Stat({ label, value, hint, meter }: { label: string; value: ReactNode; 
   )
 }
 
-function RarityText({ rarity, compact = false }: { rarity: number; compact?: boolean }) {
-  const tier = rarityTier(rarity)
+function RarityText({ rarity, compact = false }: { rarity: number | null; compact?: boolean }) {
+  if (rarity == null) return null
+  const color = rarityHue(rarity)
   return (
-    <span className="flex items-center gap-1.5 tabular-nums" style={{ color: rarityColor[tier.tone] }}>
-      <span className="size-1.5 rounded-full" style={{ background: rarityColor[tier.tone] }} aria-hidden />
+    <span className="flex items-center gap-1.5 tabular-nums" style={{ color }}>
+      <span className="size-1.5 rounded-full" style={{ background: color }} aria-hidden />
       {compact ? formatRarity(rarity) : `${formatRarity(rarity)} of players`}
     </span>
   )
@@ -444,7 +418,7 @@ function RarityText({ rarity, compact = false }: { rarity: number; compact?: boo
 
 function AchievementIcon({ achievement, small = false }: { achievement: Achievement; small?: boolean }) {
   const size = small ? "size-10" : "size-12"
-  const color = rarityColor[rarityTier(achievement.rarity).tone]
+  const color = rarityHue(achievement.rarity)
   if (achievement.icon) {
     return (
       // eslint-disable-next-line @next/next/no-img-element

@@ -3,8 +3,8 @@ export type Achievement = {
   name: string
   description: string
   score: number
-  /** Percent of players who unlocked it. */
-  rarity: number
+  /** Percent of players who unlocked it, or null when Xbox doesn't say. */
+  rarity: number | null
   unlockedAt: string | null
   icon?: string
   platforms?: string[]
@@ -75,6 +75,11 @@ export const rarityColor: Record<RarityTone, string> = {
   common: "#b7c4bc",
 }
 
+/** The tier color for a rarity, or a neutral gray when Xbox gave no rarity. */
+export function rarityHue(percent: number | null) {
+  return percent == null ? "#6b6b72" : rarityColor[rarityTier(percent).tone]
+}
+
 export function rarityTier(percent: number): { label: string; tone: RarityTone } {
   if (percent < 5) return { label: "Ultra Rare", tone: "ultra" }
   if (percent < 10) return { label: "Very Rare", tone: "very" }
@@ -131,7 +136,7 @@ export function tally(games: Array<{ title: string; achievements: Achievement[] 
     unlocked += scores.unlocked
     count += scores.count
     for (const achievement of game.achievements) {
-      if (!achievement.unlockedAt) continue
+      if (!achievement.unlockedAt || achievement.rarity == null) continue
       if (!rarest || achievement.rarity < rarest.rarity) {
         rarest = {
           name: achievement.name,

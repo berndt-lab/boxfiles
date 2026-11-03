@@ -1,8 +1,9 @@
 import { cacheLife, cacheTag } from "next/cache"
-import { tally, type Profile } from "@/lib/format"
+import { isCompleted, rarityTier, tally, type Profile, type RarityTone } from "@/lib/format"
 import { cleanSocials, type Socials } from "@/lib/socials"
+import type { RecentUnlock } from "@/lib/xbox-map"
 
-// Upstash Redis over its REST API: a sorted set ranks xuids by gamerscore, a hash holds what each row shows.
+// Upstash Redis over its REST API: one sorted set per board ranks xuids, a hash holds what each row shows.
 const SCORES = "lb:gamerscore"
 const PLAYERS = "lb:players"
 const HIDDEN = "lb:hidden"
@@ -10,6 +11,12 @@ const TAGS = "lb:tags"
 const SOCIALS = "lb:socials"
 const VIEWS = "lb:views"
 export const LEADERBOARD_TAG = "leaderboard"
+
+const BOARDS = { overall: SCORES, difficulty: "lb:difficulty", completions: "lb:completed" } as const
+export type Board = keyof typeof BOARDS
+
+/** Difficulty weights by rarity tier: an ultra rare unlock is worth five times its gamerscore. */
+export const DIFFICULTY_WEIGHTS: Record<RarityTone, number> = { ultra: 5, very: 3, rare: 2, uncommon: 1.5, common: 1 }
 
 export type LeaderboardEntry = {
   xuid: string
@@ -20,6 +27,12 @@ export type LeaderboardEntry = {
   earned: number
   total: number
   games: number
+  /** Games at 100%. */
+  completed?: number
+  /** Gamerscore weighted by rarity across the latest 1,000 unlocks. */
+  difficulty?: number
+  /** Unlocks under 5% of players, within those same unlocks. */
+  ultra?: number
   updatedAt: string
 }
 
@@ -59,12 +72,12 @@ function parseEntry(row: unknown): LeaderboardEntry | null {
 }
 
 /** Null when no storage is configured. */
-export async function topPlayers(limit = 50): Promise<LeaderboardEntry[] | null> {
+export async function topPlayers(board: Board = "overall", limit = 50): Promise<LeaderboardEntry[] | null> {
   "use cache"
   cacheLife("minutes")
   cacheTag(LEADERBOARD_TAG)
   if (!storage()) return null
-  const [ids] = await redis([["ZREVRANGE", SCORES, 0, limit - 1]])
+  const [ids] = await redis([["ZREVRANGE", BOARDS[board], 0, limit - 1]])
   const xuids = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []
   if (xuids.length === 0) return []
   const [rows] = await redis([["HMGET", PLAYERS, ...xuids]])
@@ -95,10 +108,24 @@ export async function rankOf(xuid: string): Promise<{ rank: number; total: numbe
   return typeof rank === "number" && typeof total === "number" ? { rank: rank + 1, total } : null
 }
 
-export function entryFromProfile(profile: Profile): LeaderboardEntry | null {
+export function difficultyOf(unlocks: RecentUnlock[]) {
+  let difficulty = 0
+  let ultra = 0
+  for (const { achievement } of unlocks) {
+    const tone = achievement.rarity == null ? "common" : rarityTier(achievement.rarity).tone
+    difficulty += achievement.score * DIFFICULTY_WEIGHTS[tone]
+    if (tone === "ultra") ultra += 1
+  }
+  return { difficulty: Math.round(difficulty), ultra }
+}
+
+/** `unlocks` adds the difficulty score; without it, the stored score is kept. */
+export function entryFromProfile(profile: Profile, unlocks?: RecentUnlock[] | null): LeaderboardEntry | null {
   if (!profile.xuid) return null
   const stats = tally(profile.games)
   return {
+    ...(unlocks ? difficultyOf(unlocks) : {}),
+    completed: profile.games.filter(isCompleted).length,
     xuid: profile.xuid,
     gamertag: profile.gamertag,
     classicTag: profile.classicTag,
@@ -114,13 +141,24 @@ export function entryFromProfile(profile: Profile): LeaderboardEntry | null {
 /** Adds or refreshes a signed-in player's row, unless they chose to leave the board. */
 export async function saveEntry(entry: LeaderboardEntry) {
   if (!storage()) return
-  const [hidden] = await redis([["SISMEMBER", HIDDEN, entry.xuid]])
+  const [hidden, previous] = await redis([
+    ["SISMEMBER", HIDDEN, entry.xuid],
+    ["HGET", PLAYERS, entry.xuid],
+  ])
   if (hidden === 1) return
-  const tags = [entry.gamertag, entry.classicTag].filter((tag): tag is string => Boolean(tag))
+  const old = parseEntry(previous)
+  const row: LeaderboardEntry = {
+    ...entry,
+    difficulty: entry.difficulty ?? old?.difficulty,
+    ultra: entry.ultra ?? old?.ultra,
+  }
+  const tags = [row.gamertag, row.classicTag].filter((tag): tag is string => Boolean(tag))
   await redis([
-    ["ZADD", SCORES, entry.gamerscore, entry.xuid],
-    ["HSET", PLAYERS, entry.xuid, JSON.stringify(entry)],
-    ...tags.map((tag) => ["HSET", TAGS, tag.toLowerCase(), entry.xuid]),
+    ["ZADD", BOARDS.overall, row.gamerscore, row.xuid],
+    ["ZADD", BOARDS.completions, row.completed ?? 0, row.xuid],
+    ...(row.difficulty != null ? [["ZADD", BOARDS.difficulty, row.difficulty, row.xuid]] : []),
+    ["HSET", PLAYERS, row.xuid, JSON.stringify(row)],
+    ...tags.map((tag) => ["HSET", TAGS, tag.toLowerCase(), row.xuid]),
   ])
 }
 
@@ -136,7 +174,7 @@ export async function leaveBoard(xuid: string) {
   const tags = [entry?.gamertag, entry?.classicTag].filter((tag): tag is string => Boolean(tag))
   await redis([
     ["SADD", HIDDEN, xuid],
-    ["ZREM", SCORES, xuid],
+    ...Object.values(BOARDS).map((key) => ["ZREM", key, xuid]),
     ["HDEL", PLAYERS, xuid],
     ...tags.map((tag) => ["HDEL", TAGS, tag.toLowerCase()]),
   ])

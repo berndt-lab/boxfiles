@@ -135,7 +135,7 @@ assert.equal(page.achievements[0]?.rarity, 2.4)
 assert.equal(page.achievements[0]?.unlockedAt, "2026-04-02")
 assert.equal(page.achievements[1]?.description, "Secret achievement.")
 assert.equal(page.achievements[1]?.unlockedAt, null)
-assert.equal(page.achievements[1]?.rarity, 100)
+assert.equal(page.achievements[1]?.rarity, null)
 assert.equal(page.achievements[1]?.progress, "1/3")
 assert.equal(page.achievements[1]?.estimate, "12m")
 assert.equal(page.achievements[1]?.kind, "Challenge")
@@ -167,4 +167,17 @@ assert.equal(recent[0].game, "Demo Racer")
 assert.equal(recent[0].achievement.id, "1234:7")
 assert.equal(recent[0].achievement.score, 15)
 assert.equal(recent[0].achievement.unlockedAt, "2026-10-30")
+console.log("ok")
+
+const unfiltered = achievementsFrom(
+  {
+    achievements: [
+      { id: "1", name: "Mine", progressState: "Achieved", titleAssociations: [{ id: 20 }], rarity: { currentPercentage: 3 } },
+      { id: "2", name: "Other game", progressState: "Achieved", titleAssociations: [{ id: 99 }] },
+    ],
+  },
+  "20",
+)
+assert.equal(unfiltered.foreign, 1)
+assert.deepEqual(unfiltered.achievements.map((achievement) => achievement.name), ["Mine"])
 console.log("ok")

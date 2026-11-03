@@ -175,14 +175,24 @@ function mapTitle(value: unknown): Game | null {
   }
 }
 
-export function achievementsFrom(data: unknown, titleId: string): { achievements: Achievement[]; continuation: string | null } {
+/** `foreign` counts achievements that belong to other titles: a sign the service ignored the titleId filter. */
+export function achievementsFrom(
+  data: unknown,
+  titleId: string,
+): { achievements: Achievement[]; continuation: string | null; foreign: number } {
   const root = payload(data)
+  let foreign = 0
   const achievements = list(root?.achievements).flatMap((item) => {
+    const ids = list(record(item)?.titleAssociations).map((title) => String(record(title)?.id ?? ""))
+    if (ids.length > 0 && !ids.includes(titleId)) {
+      foreign += 1
+      return []
+    }
     const achievement = mapAchievement(item, titleId)
     return achievement ? [achievement] : []
   })
   const continuation = text(record(root?.pagingInfo)?.continuationToken)
-  return { achievements, continuation: continuation || null }
+  return { achievements, continuation: continuation || null, foreign }
 }
 
 export function mapAchievement(value: unknown, titleId: string): Achievement | null {
@@ -201,7 +211,7 @@ export function mapAchievement(value: unknown, titleId: string): Achievement | n
     if (item && text(item.type).toLowerCase() === "gamerscore") score += num(item.value)
   }
   const rarity = record(raw.rarity)
-  const percent = rarity && "currentPercentage" in rarity ? num(rarity.currentPercentage) : 100
+  const percent = rarity && "currentPercentage" in rarity ? num(rarity.currentPercentage) : null
   const secret = raw.isSecret === true
   const description = unlocked
     ? text(raw.description) || text(raw.lockedDescription)

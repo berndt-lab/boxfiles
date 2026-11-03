@@ -16,6 +16,7 @@ import {
   gameTally,
   isCompleted,
   rarityColor,
+  rarityHue,
   rarityTier,
   words,
   type Achievement,
@@ -142,8 +143,10 @@ export function ProfileView({
     window.history.replaceState(null, "", url)
   }
 
-  const headline = profile.gamerscore ?? games.reduce((sum, game) => sum + (game.earned ?? 0), 0)
-  const possible = games.reduce((sum, game) => sum + (game.total ?? 0), 0)
+  const visible = games.reduce((sum, game) => sum + (game.earned ?? 0), 0)
+  const headline = profile.gamerscore ?? visible
+  // Players can hide games on Xbox: their gamerscore still counts, but the title history leaves them out.
+  const hidden = Math.max(0, headline - visible)
 
   return (
     <MotionConfig reducedMotion="user">
@@ -180,7 +183,9 @@ export function ProfileView({
                 {formatGs(headline)}
                 <span className="ambient-text ml-[0.04em] align-top text-[0.34em] tracking-normal">G</span>
               </p>
-              {possible > 0 && <p className="label-mono mt-3 text-faint">of {formatGs(possible)} possible</p>}
+              {hidden > 0 && (
+                <p className="label-mono mt-3 text-faint">{formatGs(hidden)}G from games hidden on Xbox</p>
+              )}
             </div>
           </div>
           <StatsStrip games={games} baseCount={baseDone.size} views={views} rank={rank} />
@@ -276,8 +281,8 @@ function Highlights({
 }) {
   const feed = use(unlocks)
   const rarest = (feed ?? [])
-    .filter((unlock) => unlock.achievement.rarity < 100)
-    .sort((a, b) => a.achievement.rarity - b.achievement.rarity)
+    .flatMap((unlock) => (unlock.achievement.rarity == null ? [] : [{ ...unlock, rarity: unlock.achievement.rarity }]))
+    .sort((a, b) => a.rarity - b.rarity)
     .slice(0, 5)
   const latest = feed?.[0] ?? null
   const completed = games
@@ -294,13 +299,13 @@ function Highlights({
         ) : (
           <ul className="mt-3 flex gap-2 sm:gap-2.5">
             {rarest.map((unlock) => {
-              const color = rarityColor[rarityTier(unlock.achievement.rarity).tone]
+              const color = rarityHue(unlock.rarity)
               return (
                 <li key={unlock.achievement.id}>
                   <button
                     type="button"
                     onClick={() => onOpen(unlock.titleId)}
-                    title={`${unlock.achievement.name} · ${unlock.game} · ${formatRarity(unlock.achievement.rarity)} of players`}
+                    title={`${unlock.achievement.name} · ${unlock.game} · ${formatRarity(unlock.rarity)} of players`}
                     className="group block text-center"
                   >
                     <span
@@ -310,7 +315,7 @@ function Highlights({
                       <AchievementImage src={unlock.achievement.icon} color={color} />
                     </span>
                     <span className="label-mono mt-2 block tabular-nums" style={{ color }}>
-                      {formatRarity(unlock.achievement.rarity)}
+                      {formatRarity(unlock.rarity)}
                     </span>
                   </button>
                 </li>
@@ -327,7 +332,7 @@ function Highlights({
           className="material light-strip group relative order-first flex min-w-0 items-center gap-4 rounded-[20px] border border-line p-4 text-left transition-colors hover:border-line-strong md:col-span-2 xl:order-none xl:col-span-1"
         >
           <span className="block size-16 shrink-0 overflow-hidden rounded-xl sm:size-20">
-            <AchievementImage src={latest.achievement.icon} color={rarityColor[rarityTier(latest.achievement.rarity).tone]} />
+            <AchievementImage src={latest.achievement.icon} color={rarityHue(latest.achievement.rarity)} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="label-mono block text-muted">Latest unlock</span>
@@ -342,15 +347,17 @@ function Highlights({
               <span className="text-foreground/80">{latest.game}</span>
             </span>
           </span>
-          <span className="hidden shrink-0 text-right sm:block">
-            <span
-              className="block font-display text-3xl font-semibold tabular-nums tracking-[-0.04em]"
-              style={{ color: rarityColor[rarityTier(latest.achievement.rarity).tone] }}
-            >
-              {formatRarity(latest.achievement.rarity)}
+          {latest.achievement.rarity != null && (
+            <span className="hidden shrink-0 text-right sm:block">
+              <span
+                className="block font-display text-3xl font-semibold tabular-nums tracking-[-0.04em]"
+                style={{ color: rarityHue(latest.achievement.rarity) }}
+              >
+                {formatRarity(latest.achievement.rarity)}
+              </span>
+              <span className="label-mono text-faint">{rarityTier(latest.achievement.rarity).label}</span>
             </span>
-            <span className="label-mono text-faint">{rarityTier(latest.achievement.rarity).label}</span>
-          </span>
+          )}
         </button>
       ) : (
         <div className="hidden xl:block" />
@@ -646,7 +653,8 @@ function GameDrawer({
         if (a.unlockedAt) return -1
         if (b.unlockedAt) return 1
       }
-      return a.rarity - b.rarity
+      // Unknown rarity sorts last.
+      return (a.rarity ?? 101) - (b.rarity ?? 101)
     })
 
   if (!mounted) return null
@@ -744,8 +752,8 @@ function subscribeNothing() {
 }
 
 function AchievementRow({ achievement }: { achievement: Achievement }) {
-  const tier = rarityTier(achievement.rarity)
-  const color = rarityColor[tier.tone]
+  const tier = achievement.rarity == null ? null : rarityTier(achievement.rarity)
+  const color = rarityHue(achievement.rarity)
   const unlocked = Boolean(achievement.unlockedAt)
   const extras = [
     achievement.kind,
@@ -764,8 +772,12 @@ function AchievementRow({ achievement }: { achievement: Achievement }) {
         </div>
         <p className="mt-0.5 text-sm text-muted">{achievement.description}</p>
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-          <RarityBadge tone={tier.tone} label={tier.label} />
-          <span className="tabular-nums text-muted">{formatRarity(achievement.rarity)} of players</span>
+          {tier && achievement.rarity != null && (
+            <>
+              <RarityBadge tone={tier.tone} label={tier.label} />
+              <span className="tabular-nums text-muted">{formatRarity(achievement.rarity)} of players</span>
+            </>
+          )}
           <span className={unlocked ? "text-muted" : "text-faint"}>{unlockStatus(achievement)}</span>
           {extras.map((extra) => (
             <span key={extra} className="text-faint">
