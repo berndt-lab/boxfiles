@@ -169,7 +169,6 @@ export function ProfileView({
                   {profile.gamertag}
                 </h1>
                 {profile.bio ? <p className="mt-3 max-w-xl text-pretty text-muted">{profile.bio}</p> : null}
-                <ProfileFacts profile={profile} />
                 <SocialLinks socials={socials} className="mt-3" />
                 {canEditSocials && <SocialsEditor socials={socials} />}
               </div>
@@ -903,43 +902,6 @@ function LoadingRows() {
             <span className="block h-3 w-2/3 animate-pulse rounded-full bg-raised/70" />
             <span className="block h-3 w-1/4 animate-pulse rounded-full bg-raised/50" />
           </span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function profileFacts(profile: Profile) {
-  const tenure = profile.tenure && profile.tenure !== "0" ? `${words(profile.tenure)} tenure` : ""
-  return [
-    profile.classicTag,
-    profile.presence,
-    profile.tier ? words(profile.tier) : "",
-    profile.gamePass ? "Game Pass" : "",
-    profile.verified ? "Verified" : "",
-    profile.reputation ? words(profile.reputation) : "",
-    profile.location,
-    tenure,
-    profile.followers != null ? `${formatGs(profile.followers)} followers` : "",
-    profile.following != null ? `${formatGs(profile.following)} following` : "",
-    profile.lastSeen ? `Last seen ${formatUnlocked(profile.lastSeen)}` : "",
-  ].filter((item): item is string => Boolean(item))
-}
-
-function ProfileFacts({ profile }: { profile: Profile }) {
-  const facts = profileFacts(profile)
-  if (facts.length === 0) return null
-  return (
-    <ul className="mt-3 flex flex-wrap gap-1.5">
-      {facts.map((fact) => (
-        <li
-          key={fact}
-          className="flex items-center gap-1.5 rounded-full border border-line bg-white/[0.02] px-2.5 py-1 text-xs text-muted"
-        >
-          {fact === profile.presence && /online/i.test(fact) ? (
-            <span className="size-1.5 rounded-full bg-xbox shadow-[0_0_6px_var(--xbox)]" aria-hidden />
-          ) : null}
-          {fact}
         </li>
       ))}
     </ul>
