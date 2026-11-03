@@ -177,12 +177,12 @@ export async function lookupAchievements(xuid: string, titleId: string): Promise
   return achievementsFor(await requireSession(), xuid, titleId)
 }
 
-// Contract 3 is the one that carries rarity, but it may ignore the titleId filter. Ask it first, and fall back to
-// contract 2 (no rarity) when the answer fails or mixes in other games.
+// Contract 3 is reported to carry rarity, but it may ignore the titleId filter or answer empty. Ask it first, and
+// fall back to contract 2 when the answer fails, comes back empty, or mixes in other games.
 async function achievementsFor(session: XboxSession, xuid: string, titleId: string): Promise<Achievement[]> {
   try {
     const withRarity = await achievementPages(session, xuid, titleId, "3")
-    if (withRarity) return withRarity
+    if (withRarity && withRarity.length > 0) return withRarity
   } catch (error) {
     if (expired(error)) throw error
   }
@@ -236,15 +236,51 @@ export async function lookupUnlocks(xuid: string): Promise<RecentUnlock[]> {
 
 async function unlocksFor(session: XboxSession, xuid: string, limit: number) {
   const url = `${ACHIEVEMENTS}/xuid(${xuid})/achievements?unlockedOnly=true&orderBy=unlockTime&maxItems=${limit}`
-  // Contract 3 adds rarity; contract 2 is the fallback when it's refused.
-  const data = await xboxGet(session, url, "3").catch((error: unknown) => {
+  // Contract 3 may add rarity; contract 2 is the fallback when it's refused or comes back empty.
+  let unlocks: RecentUnlock[] = []
+  try {
+    unlocks = recentUnlocksFrom(await xboxGet(session, url, "3"))
+  } catch (error) {
     if (expired(error)) throw error
-    return xboxGet(session, url, "2")
-  })
+  }
+  if (unlocks.length === 0) unlocks = recentUnlocksFrom(await xboxGet(session, url, "2"))
   // Newest first, whether or not the service honored orderBy.
-  return recentUnlocksFrom(data)
+  return unlocks
     .sort((a, b) => (b.achievement.unlockedAt ?? "").localeCompare(a.achievement.unlockedAt ?? ""))
     .slice(0, limit)
+}
+
+/**
+ * Development only: what the achievements service actually returns for each contract version, for one game and
+ * for the cross-game feed. Shows the top-level keys, the count, and the first achievement in full.
+ */
+export async function inspectAchievements(titleId?: string) {
+  const session = await requireSession()
+  const id =
+    titleId && /^\d+$/.test(titleId)
+      ? titleId
+      : gamesFrom(
+          await xboxFetch(session, `${TITLES}/xuid(${session.xuid})/titles/titlehistory/decoration/achievement?maxItems=20`, "2"),
+        ).find((game) => (game.earned ?? 0) > 0)?.id
+  const base = `${ACHIEVEMENTS}/xuid(${session.xuid})/achievements`
+  const requests = {
+    game: `${base}?titleId=${id}&maxItems=3`,
+    feed: `${base}?unlockedOnly=true&orderBy=unlockTime&maxItems=3`,
+  }
+  const report: Record<string, unknown> = { titleId: id }
+  for (const [name, url] of Object.entries(requests)) {
+    for (const contract of ["2", "3", "4"]) {
+      try {
+        const body = await xboxFetch(session, url, contract)
+        const root = body && typeof body === "object" ? (body as Record<string, unknown>) : {}
+        const items = Array.isArray(root.achievements) ? root.achievements : []
+        report[`${name} v${contract}`] = { keys: Object.keys(root), count: items.length, first: items[0] ?? null }
+      } catch (error) {
+        report[`${name} v${contract}`] = { error: error instanceof Error ? error.message : String(error) }
+      }
+    }
+  }
+  return report
 }
 
 const BASE_CHECKS = 12
